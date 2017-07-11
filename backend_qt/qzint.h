@@ -16,6 +16,9 @@
 
 #ifndef BARCODERENDER_H
 #define BARCODERENDER_H
+
+#include "qzint_export.h"
+
 #include <QColor>
 #include <QPainter>
 
@@ -24,7 +27,7 @@
 namespace Zint
 {
 
-class QZint
+class QZINTLIB_EXPORT QZint
 {
 private:
 

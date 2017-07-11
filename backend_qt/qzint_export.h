@@ -1,0 +1,10 @@
+#ifndef QZINT_EXPORT_H
+#define QZINT_EXPORT_H
+
+#if defined(QZINTLIB_LIBRARY)
+#define QZINTLIB_EXPORT Q_DECL_EXPORT
+#else
+#define QZINTLIB_EXPORT Q_DECL_IMPORT
+#endif
+
+#endif // QZINT_EXPORT_H

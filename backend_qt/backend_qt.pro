@@ -1,36 +1,45 @@
-
 TEMPLATE = lib
+CONFIG += dll
 
+QT += widgets
 
-# My qt is configured for static build:
-# http://qt-project.org/wiki/Build_Standalone_Qt_Application_for_Windows
-CONFIG += staticlib
-
-# for dynamic build enable this:
-#CONFIG += dll
-
-macx{
-	CONFIG -= dll
-	CONFIG += lib_bundle
+macx {
+    CONFIG -= dll
+    CONFIG += lib_bundle
 }
 
-TARGET = QtZint
+TARGET = qzint
 
 INCLUDEPATH += ../backend
 
-#EDIT THIS !!!!
-DEFINES += ZINT_VERSION="\\\"2.5.1\\\""
+DEFINES += ZINT_VERSION="\\\"2.6.0\\\""
+DEFINES += QZINTLIB_LIBRARY
 
 !contains(DEFINES, NO_PNG) {
-    INCLUDEPATH += ../../lpng
-    INCLUDEPATH += ../../zlib
+    INCLUDEPATH += $$PWD/../extern/libpng/include
+    INCLUDEPATH += $$PWD/../extern/zlib/include
+    equals(QT_ARCH, x86_64) {
+        target.path=$$PWD/lib64
+        LIBS += -L$$PWD/../extern/libpng/lib/x64 \
+                -L$$PWD/../extern/zlib/lib/x64
+    } else {
+        equals(QT_ARCH, i386) {
+            target.path=$$PWD/lib32
+            LIBS += -L$$PWD/../extern/libpng/lib/x86 \
+                    -L$$PWD/../extern/zlib/lib/x86
+        } else {
+            warning("Unsupported platform: $$QT_ARCH")
+        }
+    }
+    LIBS += -llibpng16 \
+            -lzlib
 }
 
-contains(DEFINES, QR_SYSTEM){
+contains(DEFINES, QR_SYSTEM) {
     LIBS += -lqrencode
 }
 
-contains(DEFINES, QR){
+contains(DEFINES, QR) {
 
 INCLUDEPATH += qrencode
 
@@ -72,7 +81,15 @@ HEADERS +=  ../backend/aztec.h \
             ../backend/sjis.h \
             ../backend/stdint_msvc.h \
             ../backend/zint.h \
-            qzint.h
+            ../backend/code1.h \
+            ../backend/emf.h \
+            ../backend/gb2312.h \
+            ../backend/gb18030.h \
+            ../backend/ms_stdint.h \
+            ../backend/qr.h \
+            ../backend/tif.h \
+            qzint.h \
+    qzint_export.h
 
 SOURCES += ../backend/2of5.c \
            ../backend/auspost.c \
@@ -117,16 +134,9 @@ SOURCES += ../backend/2of5.c \
            ../backend/png.c \
            qzint.cpp
 
-VERSION = 2.5.0
+#VERSION = 2.6.0
 
-#DESTDIR = .
+QMAKE_CFLAGS += /LD /MD
 
-#include.path = $$[ZINT_INSTALL_HEADERS]
-include.path = inst/include
-include.files = ../backend/zint.h qzint.h
-
-#target.path = $$[ZINT_INSTALL_LIBS]
-target.path = inst/lib
-
-INSTALLS += target include
+INSTALLS += target
 
