@@ -133,7 +133,7 @@ namespace Zint {
 
     int QZint::height() {
         encode();
-        return (m_zintSymbol->height + (m_border != NO_BORDER) ? m_borderWidth * 2 : 0)*(m_zintSymbol->symbology == BARCODE_MAXICODE ? (maxi_width + 1) : 1);
+        return (m_zintSymbol->height + ((m_border != NO_BORDER) ? m_borderWidth * 2 : 0)) * (m_zintSymbol->symbology == BARCODE_MAXICODE ? (maxi_width + 1) : 1);
     }
 
     void QZint::setHeight(int height) {
@@ -150,7 +150,7 @@ namespace Zint {
 
     int QZint::width() {
         encode();
-        return (m_zintSymbol->width + (m_border == BOX) ? m_borderWidth * 2 : 0)*(m_zintSymbol->symbology == BARCODE_MAXICODE ? (maxi_width + 1) : 1);
+        return (m_zintSymbol->width + ((m_border == BOX) ? m_borderWidth * 2 : 0)) * (m_zintSymbol->symbology == BARCODE_MAXICODE ? (maxi_width + 1) : 1);
     }
 
     float QZint::scale() {
