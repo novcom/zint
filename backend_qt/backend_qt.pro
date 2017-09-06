@@ -8,7 +8,11 @@ macx {
     CONFIG += lib_bundle
 }
 
-TARGET = qzint
+CONFIG(debug, debug|release) {
+    TARGET = qzintd
+} else {
+    TARGET = qzint
+}
 
 INCLUDEPATH += ../backend
 
