@@ -369,13 +369,30 @@ namespace Zint {
             textoffset = 0;
         }
         gwidth += m_zintSymbol->whitespace_width * 2;
-        
-        if (paintRect.width() / gwidth < paintRect.height() / gheight) {
-            ysf = xsf = (qreal) paintRect.width() / gwidth;
-            ytr += (qreal) (paintRect.height() - gheight * ysf) / 2;
-        } else {
-            ysf = xsf = (qreal) paintRect.height() / gheight;
-            xtr += (qreal) (paintRect.width() - gwidth * xsf) / 2;
+        switch(mode)
+        {
+        case IgnoreAspectRatio:
+            xsf=(qreal)paintRect.width()/gwidth;
+            ysf=(qreal)paintRect.height()/gheight;
+            break;
+
+        case KeepAspectRatio:
+            if (paintRect.width()/gwidth<paintRect.height()/gheight)
+            {
+                ysf=xsf=(qreal)paintRect.width()/gwidth;
+                ytr+=(qreal)(paintRect.height()-gheight*ysf)/2;
+            }
+            else
+            {
+                ysf=xsf=(qreal)paintRect.height()/gheight;
+                xtr+=(qreal)(paintRect.width()-gwidth*xsf)/2;
+            }
+            break;
+
+        case CenterBarCode:
+            xtr+=((qreal)paintRect.width()-gwidth*xsf)/2;
+            ytr+=((qreal)paintRect.height()-gheight*ysf)/2;
+            break;
         }
 
         painter.setBackground(QBrush(m_bgColor));
