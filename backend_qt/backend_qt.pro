@@ -1,11 +1,9 @@
 TEMPLATE = lib
-CONFIG += dll
 
 QT += widgets
 
-macx {
-    CONFIG -= dll
-    CONFIG += lib_bundle
+win32 {
+    CONFIG += dll
 }
 
 CONFIG(debug, debug|release) {
@@ -35,8 +33,10 @@ DEFINES += QZINTLIB_LIBRARY
             warning("Unsupported platform: $$QT_ARCH")
         }
     }
-    LIBS += -llibpng16 \
-            -lzlib
+
+    # Replace this with the location to your libpng
+    LIBS += -L/usr/local/Cellar/libpng/1.6.29/lib/ -lpng \
+            -lz
 }
 
 contains(DEFINES, QR_SYSTEM) {
@@ -65,35 +65,35 @@ SOURCES += qrencode/bitstream.c \
            qrencode/split.c 
 }
 
-HEADERS +=  ../backend/aztec.h \
-            ../backend/bmp.h \
-            ../backend/code49.h \
-            ../backend/common.h \
-            ../backend/composite.h \
-            ../backend/dmatrix.h \
-            ../backend/eci.h \
-            ../backend/font.h \
-            ../backend/gridmtx.h \
-            ../backend/gs1.h \
-            ../backend/hanxin.h \
-            ../backend/large.h \
-            ../backend/maxicode.h \
-            ../backend/pcx.h \
-            ../backend/pdf417.h \
-            ../backend/reedsol.h \
-            ../backend/rss.h \
-            ../backend/sjis.h \
-            ../backend/stdint_msvc.h \
-            ../backend/zint.h \
-            ../backend/code1.h \
-            ../backend/emf.h \
-            ../backend/gb2312.h \
-            ../backend/gb18030.h \
-            ../backend/ms_stdint.h \
-            ../backend/qr.h \
-            ../backend/tif.h \
-            qzint.h \
-    qzint_export.h
+HEADERS += ../backend/aztec.h \
+           ../backend/bmp.h \
+           ../backend/code49.h \
+           ../backend/common.h \
+           ../backend/composite.h \
+           ../backend/dmatrix.h \
+           ../backend/eci.h \
+           ../backend/font.h \
+           ../backend/gridmtx.h \
+           ../backend/gs1.h \
+           ../backend/hanxin.h \
+           ../backend/large.h \
+           ../backend/maxicode.h \
+           ../backend/pcx.h \
+           ../backend/pdf417.h \
+           ../backend/reedsol.h \
+           ../backend/rss.h \
+           ../backend/sjis.h \
+           ../backend/stdint_msvc.h \
+           ../backend/zint.h \
+           ../backend/code1.h \
+           ../backend/emf.h \
+           ../backend/gb2312.h \
+           ../backend/gb18030.h \
+           ../backend/ms_stdint.h \
+           ../backend/qr.h \
+           ../backend/tif.h \
+           qzint.h \
+           qzint_export.h
 
 SOURCES += ../backend/2of5.c \
            ../backend/auspost.c \
@@ -126,7 +126,7 @@ SOURCES += ../backend/2of5.c \
            ../backend/ps.c \
            ../backend/raster.c \
            ../backend/reedsol.c \
-            ../backend/render.c \
+           ../backend/render.c \
            ../backend/rss.c \
            ../backend/svg.c \
            ../backend/telepen.c \
@@ -140,7 +140,9 @@ SOURCES += ../backend/2of5.c \
 
 #VERSION = 2.6.0
 
-QMAKE_CFLAGS += /LD /MD
+win32 {
+    QMAKE_CFLAGS += /LD /MD
+}
 
 INSTALLS += target
 
