@@ -1,8 +1,6 @@
-/* tif.h - Aldus Tagged Image File Format */
-
 /*
     libzint - the open source barcode library
-    Copyright (C) 2016-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,60 +27,53 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
-#ifndef TIF_H
-#define	TIF_H
+/* vim: set ts=4 sw=4 et : */
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
+#include "testcommon.h"
 
-#ifdef _MSC_VER
-#include <windows.h>
-#include "stdint_msvc.h"
-#else
-#include <stdint.h>
-#endif
+// #181 Nico Gunkel OSS-Fuzz
+static void test_fuzz(void)
+{
+    testStart("");
 
-#pragma pack(1)
+    int ret;
+    struct item {
+        int symbology;
+        unsigned char* data;
+        int length;
+        int ret;
+    };
+    // s/\/\*[ 0-9]*\*\//\=printf("\/*%2d*\/", line(".") - line("'<"))
+    struct item data[] = {
+        /* 0*/ { BARCODE_CODEONE, "3333P33B\035333V3333333333333\0363", -1, 0 },
+    };
+    int data_size = sizeof(data) / sizeof(struct item);
 
-    typedef struct tiff_header {
-        uint16_t byte_order;
-        uint16_t identity;
-        uint32_t offset;
-    } tiff_header_t;
+    for (int i = 0; i < data_size; i++) {
 
-    typedef struct tiff_tag {
-        uint16_t tag;
-        uint16_t type;
-        uint32_t count;
-        uint32_t offset;
-    } tiff_tag_t;
+        struct zint_symbol* symbol = ZBarcode_Create();
+        assert_nonnull(symbol, "Symbol not created\n");
 
-    typedef struct tiff_ifd {
-        uint16_t entries;
-        tiff_tag_t new_subset;
-        tiff_tag_t image_width;
-        tiff_tag_t image_length;
-        tiff_tag_t bits_per_sample;
-        tiff_tag_t compression;
-        tiff_tag_t photometric;
-        tiff_tag_t strip_offsets;
-        tiff_tag_t samples_per_pixel;
-        tiff_tag_t rows_per_strip;
-        tiff_tag_t strip_byte_counts;
-        tiff_tag_t x_resolution;
-        tiff_tag_t y_resolution;
-        tiff_tag_t planar_config;
-        tiff_tag_t resolution_unit;
-        uint32_t offset;
-    } tiff_ifd_t;
+        symbol->symbology = data[i].symbology;
+        int length = data[i].length;
+        if (length == -1) {
+            length = strlen(data[i].data);
+        }
 
-#pragma pack()
+        ret = ZBarcode_Encode(symbol, data[i].data, length);
+        assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
 
-#ifdef	__cplusplus
+        ZBarcode_Delete(symbol);
+    }
+
+    testFinish();
 }
-#endif
 
-#endif	/* TIF_H */
+int main()
+{
+    test_fuzz();
 
+    testReport();
 
+    return 0;
+}
