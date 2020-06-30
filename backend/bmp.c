@@ -8,14 +8,14 @@
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,9 +26,10 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,7 +44,7 @@
 
 #define SSET	"0123456789ABCDEF"
 
-int bmp_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
+INTERNAL int bmp_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     int i, row, column;
     int fgred, fggrn, fgblu, bgred, bggrn, bgblu;
     int row_size;
@@ -73,6 +74,46 @@ int bmp_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
         for (column = 0; column < symbol->bitmap_width; column++) {
             i = (3 * column) + (row * row_size);
             switch (*(pixelbuf + (symbol->bitmap_width * (symbol->bitmap_height - row - 1)) + column)) {
+                case 'W': // White
+                    bitmap[i] = 255;
+                    bitmap[i + 1] = 255;
+                    bitmap[i + 2] = 255;
+                    break;
+                case 'C': // Cyan
+                    bitmap[i] = 255;
+                    bitmap[i + 1] = 255;
+                    bitmap[i + 2] = 0;
+                    break;
+                case 'B': // Blue
+                    bitmap[i] = 255;
+                    bitmap[i + 1] = 0;
+                    bitmap[i + 2] = 0;
+                    break;
+                case 'M': // Magenta
+                    bitmap[i] = 255;
+                    bitmap[i + 1] = 0;
+                    bitmap[i + 2] = 255;
+                    break;
+                case 'R': // Red
+                    bitmap[i] = 0;
+                    bitmap[i + 1] = 0;
+                    bitmap[i + 2] = 255;
+                    break;
+                case 'Y': // Yellow
+                    bitmap[i] = 0;
+                    bitmap[i + 1] = 255;
+                    bitmap[i + 2] = 255;
+                    break;
+                case 'G': // Green
+                    bitmap[i] = 0;
+                    bitmap[i + 1] = 255;
+                    bitmap[i + 2] = 0;
+                    break;
+                case 'K': // Black
+                    bitmap[i] = 0;
+                    bitmap[i + 1] = 0;
+                    bitmap[i + 2] = 0;
+                    break;
                 case '1':
                     bitmap[i] = fgblu;
                     bitmap[i + 1] = fggrn;
@@ -122,14 +163,18 @@ int bmp_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     if ((symbol->output_options & BARCODE_STDOUT) != 0) {
 #ifdef _MSC_VER
         if (-1 == _setmode(_fileno(stdout), _O_BINARY)) {
-            strcpy(symbol->errtxt, "Can't open output file");
+            strcpy(symbol->errtxt, "600: Can't open output file");
+            free(bitmap_file_start);
+            free(bitmap);
             return ZINT_ERROR_FILE_ACCESS;
         }
 #endif
         bmp_file = stdout;
     } else {
         if (!(bmp_file = fopen(symbol->outfile, "wb"))) {
-            strcpy(symbol->errtxt, "Can't open output file (F00)");
+            free(bitmap_file_start);
+            free(bitmap);
+            strcpy(symbol->errtxt, "601: Can't open output file");
             return ZINT_ERROR_FILE_ACCESS;
         }
     }

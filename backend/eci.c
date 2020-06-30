@@ -1,20 +1,20 @@
 /*  eci.c - Extended Channel Interpretations
 
     libzint - the open source barcode library
-    Copyright (C) 2009-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2009 - 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,33 +25,29 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include "eci.h"
-#include "zint.h"
+#include "common.h"
 #ifdef _MSC_VER
 #include <malloc.h>
 #endif
 
 /* Convert Unicode to other character encodings */
-int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int *length) {
-    int glyph;
-    int bytelen;
+INTERNAL int utf_to_eci(const int eci, const unsigned char source[], unsigned char dest[], size_t *length) {
     int in_posn;
     int out_posn;
     int ext;
     int done;
-
+    
     if (eci == 26) {
         /* Unicode mode, do not process - just copy data across */
-        for (in_posn = 0; in_posn < *length; in_posn++) {
-            dest[in_posn] = source[in_posn];
-        }
+        memcpy(dest, source, *length);
         dest[*length] = '\0';
         return 0;
     }
@@ -60,8 +56,8 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
     out_posn = 0;
     do {
         /* Single byte (ASCII) character */
-        bytelen = 1;
-        glyph = (int) source[in_posn];
+        int bytelen = 1;
+        int glyph = (int) source[in_posn];
 
         if ((source[in_posn] >= 0x80) && (source[in_posn] < 0xc0)) {
             /* Something has gone wrong, abort */
@@ -73,7 +69,7 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
             bytelen = 2;
             glyph = (source[in_posn] & 0x1f) << 6;
 
-            if (*length < (in_posn + 2)) {
+            if ((int) *length < (in_posn + 2)) {
                 return ZINT_ERROR_INVALID_DATA;
             }
 
@@ -89,11 +85,11 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
             bytelen = 3;
             glyph = (source[in_posn] & 0x0f) << 12;
 
-            if (*length < (in_posn + 2)) {
+            if ((int) *length < (in_posn + 2)) {
                 return ZINT_ERROR_INVALID_DATA;
             }
 
-            if (*length < (in_posn + 3)) {
+            if ((int) *length < (in_posn + 3)) {
                 return ZINT_ERROR_INVALID_DATA;
             }
 
@@ -109,42 +105,8 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
             glyph += (source[in_posn + 2] & 0x3f);
         }
 
-        if ((source[in_posn] >= 0xf0) && (source[in_posn] < 0xf7)) {
-            /* Four-byte character */
-            bytelen = 4;
-            glyph = (source[in_posn] & 0x07) << 18;
-
-            if (*length < (in_posn + 2)) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            if (*length < (in_posn + 3)) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            if (*length < (in_posn + 4)) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            if (source[in_posn + 1] > 0xc0) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            if (source[in_posn + 2] > 0xc0) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            if (source[in_posn + 3] > 0xc0) {
-                return ZINT_ERROR_INVALID_DATA;
-            }
-
-            glyph += (source[in_posn + 1] & 0x3f) << 12;
-            glyph += (source[in_posn + 2] & 0x3f) << 6;
-            glyph += (source[in_posn + 3] & 0x3f);
-        }
-
-        if (source[in_posn] >= 0xf7) {
-            /* More than 4 bytes not supported */
+        if (source[in_posn] >= 0xf0 || glyph > 0x2122) {
+            /* Not in any ISO 8859 or Windows page */
             return ZINT_ERROR_INVALID_DATA;
         }
 
@@ -271,6 +233,9 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
                     default:
                         break;
                 }
+                if (done) {
+                    break;
+                }
             }
 
             if (!(done)) {
@@ -280,7 +245,7 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
 
         in_posn += bytelen;
         out_posn++;
-    } while (in_posn < *length);
+    } while (in_posn < (int) *length);
     dest[out_posn] = '\0';
     *length = out_posn;
 
@@ -288,7 +253,7 @@ int utf_to_eci(int eci, const unsigned char source[], unsigned char dest[], int 
 }
 
 /* Find the lowest ECI mode which will encode a given set of Unicode text */
-int get_best_eci(unsigned char source[], int length) {
+INTERNAL int get_best_eci(unsigned char source[], size_t length) {
     int eci = 3;
 
 #ifndef _MSC_VER
@@ -306,4 +271,3 @@ int get_best_eci(unsigned char source[], int length) {
 
     return 26; // If all of these fail, use Unicode!
 }
-

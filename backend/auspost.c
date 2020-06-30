@@ -2,20 +2,20 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2016 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008-2017 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,9 +26,10 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
-    SUCH DAMAGE.    
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+    SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #define GDSET 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz #"
 
@@ -68,9 +69,9 @@ static inline char convert_pattern(char data, int shift) {
 }
 
 /* Adds Reed-Solomon error correction to auspost */
-void rs_error(char data_pattern[]) {
-    int reader, triple_writer = 0;
-    char triple[31], inv_triple[31];
+static void rs_error(char data_pattern[]) {
+    size_t reader, triple_writer = 0;
+    char triple[31];
     unsigned char result[5];
 
     for (reader = 2; reader < strlen(data_pattern); reader += 3, triple_writer++) {
@@ -79,13 +80,9 @@ void rs_error(char data_pattern[]) {
                 + convert_pattern(data_pattern[reader + 2], 0);
     }
 
-    for (reader = 0; reader < triple_writer; reader++) {
-        inv_triple[reader] = triple[(triple_writer - 1) - reader];
-    }
-
     rs_init_gf(0x43);
     rs_init_code(4, 1);
-    rs_encode(triple_writer, (unsigned char*) inv_triple, result);
+    rs_encode(triple_writer, (unsigned char*) triple, result);
 
     for (reader = 4; reader > 0; reader--) {
         strcat(data_pattern, AusBarTable[(int) result[reader - 1]]);
@@ -94,7 +91,7 @@ void rs_error(char data_pattern[]) {
 }
 
 /* Handles Australia Posts's 4 State Codes */
-int australia_post(struct zint_symbol *symbol, unsigned char source[], int length) {
+INTERNAL int australia_post(struct zint_symbol *symbol, unsigned char source[], int length) {
     /* Customer Standard Barcode, Barcode 2 or Barcode 3 system determined automatically
        (i.e. the FCC doesn't need to be specified by the user) dependent
        on the length of the input string */
@@ -104,7 +101,7 @@ int australia_post(struct zint_symbol *symbol, unsigned char source[], int lengt
        1 = Tracker and Ascender
        2 = Tracker and Descender
        3 = Tracker only */
-    int error_number, zeroes;
+    int error_number;
     int writer;
     unsigned int loopey, reader;
     size_t h;
@@ -113,7 +110,12 @@ int australia_post(struct zint_symbol *symbol, unsigned char source[], int lengt
     char fcc[3] = {0, 0, 0}, dpid[10];
     char localstr[30];
 
-    error_number = 0;
+    /* Check input immediately to catch nuls */
+    error_number = is_sane(GDSET, source, length);
+    if (error_number == ZINT_ERROR_INVALID_DATA) {
+        strcpy(symbol->errtxt, "404: Invalid characters in data");
+        return error_number;
+    }
     strcpy(localstr, "");
 
     /* Do all of the length checking first to avoid stack smashing */
@@ -138,16 +140,17 @@ int australia_post(struct zint_symbol *symbol, unsigned char source[], int lengt
                 error_number = is_sane(NEON, source, length);
                 break;
             default:
-                strcpy(symbol->errtxt, "Auspost input is wrong length (D01)");
+                strcpy(symbol->errtxt, "401: Auspost input is wrong length");
                 return ZINT_ERROR_TOO_LONG;
         }
         if (error_number == ZINT_ERROR_INVALID_DATA) {
-            strcpy(symbol->errtxt, "Invalid characters in data (D02)");
+            strcpy(symbol->errtxt, "402: Invalid characters in data");
             return error_number;
         }
     } else {
+        int zeroes;
         if (length > 8) {
-            strcpy(symbol->errtxt, "Auspost input is too long (D03)");
+            strcpy(symbol->errtxt, "403: Auspost input is too long");
             return ZINT_ERROR_TOO_LONG;
         }
         switch (symbol->symbology) {
@@ -162,23 +165,17 @@ int australia_post(struct zint_symbol *symbol, unsigned char source[], int lengt
         /* Add leading zeros as required */
         zeroes = 8 - length;
         memset(localstr, '0', zeroes);
-        localstr[8] = '\0';
+        localstr[zeroes] = '\0';
     }
 
     strcat(localstr, (char*) source);
     h = strlen(localstr);
-    error_number = is_sane(GDSET, (unsigned char *) localstr, h);
-    if (error_number == ZINT_ERROR_INVALID_DATA) {
-        strcpy(symbol->errtxt, "Invalid characters in data (D04)");
-        return error_number;
-    }
-
     /* Verifiy that the first 8 characters are numbers */
     memcpy(dpid, localstr, 8);
     dpid[8] = '\0';
     error_number = is_sane(NEON, (unsigned char *) dpid, strlen(dpid));
     if (error_number == ZINT_ERROR_INVALID_DATA) {
-        strcpy(symbol->errtxt, "Invalid characters in DPID (D05)");
+        strcpy(symbol->errtxt, "405: Invalid characters in DPID");
         return error_number;
     }
 
@@ -251,4 +248,3 @@ int australia_post(struct zint_symbol *symbol, unsigned char source[], int lengt
 
     return error_number;
 }
-

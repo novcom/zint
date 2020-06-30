@@ -2,7 +2,7 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2016 Harald Oehlmann
+    Copyright (C) 2016 - 2020 Harald Oehlmann
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,11 +29,11 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-#include <stdlib.h>
 #ifdef _MSC_VER
 #include <malloc.h>
 #endif
@@ -93,9 +93,9 @@ typedef struct sCharacterSetTable
  * The result is an or of CodeA,CodeB,CodeC,CodeFNC1 in dependency of the
  * possible Code 128 character sets.
  */
-int GetPossibleCharacterSet(unsigned char C)
+static int GetPossibleCharacterSet(unsigned char C)
 {
-    if (C<='\x19')      /* Dec:31 */
+    if (C<='\x1f')      /* Control chars */
         return CodeA;
     if (C>='0' && C<='9')
         return ZTNum;   /* ZTNum=CodeA+CodeB+CodeC */
@@ -115,7 +115,7 @@ int GetPossibleCharacterSet(unsigned char C)
  *  int CFollowing  The number of characters encodable in CodeC if we
  *          start here.
  */
-void CreateCharacterSetTable(CharacterSetTable T[], unsigned char *data, int dataLength)
+static void CreateCharacterSetTable(CharacterSetTable T[], unsigned char *data, const int dataLength)
 {
     int charCur;
     int runChar;
@@ -146,7 +146,7 @@ void CreateCharacterSetTable(CharacterSetTable T[], unsigned char *data, int dat
             /* CodeC possible */
             runChar=charCur;
             do{
-                /* Wether this is FNC1 wether next is */
+                /* Whether this is FNC1, whether next is */
                 /* numeric */
                 if (T[runChar].CharacterSet==ZTFNC1)
                     /* FNC1 */
@@ -172,7 +172,7 @@ void CreateCharacterSetTable(CharacterSetTable T[], unsigned char *data, int dat
  * one bundle into the line (up to here). This is calculated online because
  * it depends on the space in the line.
  */
-int RemainingDigits(CharacterSetTable *T, int charCur,int emptyColumns)
+static int RemainingDigits(CharacterSetTable *T, int charCur,int emptyColumns)
 {
     int digitCount;     /* Numerical digits fitting in the line */
     int runChar;
@@ -193,29 +193,26 @@ int RemainingDigits(CharacterSetTable *T, int charCur,int emptyColumns)
 }
 
 /* Find the Character distribution at a given column count.
- * If to many rows (>44) are requested the columns is extended.
- * A oneLigner may be choosen if shorter.
+ * If too many rows (>44) are requested the columns are extended.
+ * A one-liner may be choosen if shorter.
  * Parameters :
  *  T       Pointer on the Characters which fit in the row
  *          If a different count is calculated it is corrected
  *          in the callers workspace.
  *  pFillings   Output of filling characters
  *  pSet        Output of the character sets used, allocated by me.
- *  Data        The Data string to encode, exceptionnally not an out
  *  Return value    Resulting row count
  */
 
-int Columns2Rows(CharacterSetTable *T, unsigned char *data, int dataLength,
+static int Columns2Rows(struct zint_symbol *symbol, CharacterSetTable *T, const int dataLength,
         int * pRows, int * pUseColumns, int * pSet, int * pFillings)
 {
     int useColumns;     /* Usable Characters per line */
     int fillings;       /* Number of filling characters */
     int rowsCur;
-    int charCur;
     int runChar;
     int emptyColumns;   /* Number of codes still empty in line. */
     int emptyColumns2;  /* Alternative emptyColumns to compare */
-    int fOneLiner;      /* Flag if One Liner */
     int CPaires;        /* Number of digit pairs which may fit in the line */
     int characterSetCur;        /* Current Character Set */
 
@@ -225,10 +222,10 @@ int Columns2Rows(CharacterSetTable *T, unsigned char *data, int dataLength,
 
     /* >>> Loop until rowsCur<44 */
     do {
+        int charCur=0;
+        int fOneLiner=1;        /* First try one-Liner */
         memset(pSet,0,dataLength*sizeof(int));
-        charCur=0;
         rowsCur=0;
-        fOneLiner=1;        /* First try one-Liner */
 
         /* >>> Line and OneLiner-try Loop */
         do{
@@ -399,7 +396,7 @@ int Columns2Rows(CharacterSetTable *T, unsigned char *data, int dataLength,
             switch (emptyColumns) {
             case 1:
                 pSet[charCur-1]|=CFill;
-                /* Glide in following block without break */
+                /* fall through */
             case 0:
                 ++rowsCur;
                 fillings=useColumns-2+emptyColumns;
@@ -420,9 +417,9 @@ int Columns2Rows(CharacterSetTable *T, unsigned char *data, int dataLength,
             }
         }
     } while(rowsCur>44);
-    #ifdef _DEBUG
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
         printf("  -> out: rowsCur <%i>, useColumns <%i>, fillings <%i>\n",rowsCur,useColumns,fillings);
-    #endif
+    }
     *pUseColumns=useColumns;
     *pRows=rowsCur;
     *pFillings=fillings;
@@ -430,10 +427,9 @@ int Columns2Rows(CharacterSetTable *T, unsigned char *data, int dataLength,
 }
 /* Find columns if row count is given.
  */
-int Rows2Columns(CharacterSetTable *T, unsigned char *data, int dataLength,
+static int Rows2Columns(struct zint_symbol *symbol, CharacterSetTable *T, const int dataLength,
         int * pRows, int * pUseColumns, int * pSet, int * pFillings)
 {
-    int errorCur;
     int rowsCur;
     int rowsRequested;  /* Number of requested rows */
     int backupRows = 0;
@@ -442,7 +438,7 @@ int Rows2Columns(CharacterSetTable *T, unsigned char *data, int dataLength,
     int useColumns;
     int testColumns;    /* To enter into Width2Rows */
     int backupColumns = 0;
-    int fBackupOk = 0;      /* The memorysed set is o.k. */
+    int fBackupOk = 0;      /* The memorised set is o.k. */
     int testListSize = 0;
     int pTestList[62];
 #ifndef _MSC_VER
@@ -453,9 +449,9 @@ int Rows2Columns(CharacterSetTable *T, unsigned char *data, int dataLength,
 
     rowsRequested=*pRows;
 
-    #ifdef _DEBUG
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
         fprintf(stderr,"Optimizer : Searching <%i> rows\n",rowsRequested);
-    #endif
+    }
 
     if (rowsRequested==1)
         /* OneLiners are self-calibrating */
@@ -470,10 +466,11 @@ int Rows2Columns(CharacterSetTable *T, unsigned char *data, int dataLength,
     }
 
     for (;;) {
+        int errorCur;
         pTestList[testListSize] = testColumns;
         testListSize++;
         useColumns=testColumns; /* Make a copy because it may be modified */
-        errorCur = Columns2Rows(T, data, dataLength, &rowsCur, &useColumns, pSet, &fillings);
+        errorCur = Columns2Rows(symbol, T, dataLength, &rowsCur, &useColumns, pSet, &fillings);
         if (errorCur != 0)
             return errorCur;
         if (rowsCur<=rowsRequested) {
@@ -542,7 +539,7 @@ int Rows2Columns(CharacterSetTable *T, unsigned char *data, int dataLength,
 
 /* Print a character in character set A
  */
-void A2C128_A(uchar **ppOutPos,uchar c)
+static void A2C128_A(uchar **ppOutPos,uchar c)
 {
     uchar * pOutPos = *ppOutPos;
     switch(c){
@@ -565,7 +562,7 @@ void A2C128_A(uchar **ppOutPos,uchar c)
 }
 /* Output c in Set B
  */
-void A2C128_B(uchar **ppOutPos,uchar c)
+static void A2C128_B(uchar **ppOutPos,uchar c)
 {
     uchar * pOutPos = *ppOutPos;
     switch(c){
@@ -582,7 +579,7 @@ void A2C128_B(uchar **ppOutPos,uchar c)
 }
 /* Output c1, c2 in Set C
  */
-void A2C128_C(uchar **ppOutPos,uchar c1,uchar c2)
+static void A2C128_C(uchar **ppOutPos,uchar c1,uchar c2)
 {
     uchar * pOutPos = *ppOutPos;
     switch(c1){
@@ -595,7 +592,7 @@ void A2C128_C(uchar **ppOutPos,uchar c1,uchar c2)
 }
 /* Output a character in Characterset
  */
-void ASCIIZ128(uchar **ppOutPos, int CharacterSet,uchar c1, uchar c2)
+static void ASCIIZ128(uchar **ppOutPos, int CharacterSet,uchar c1, uchar c2)
 {
     if (CharacterSet==CodeA)
         A2C128_A(ppOutPos,c1);
@@ -606,7 +603,7 @@ void ASCIIZ128(uchar **ppOutPos, int CharacterSet,uchar c1, uchar c2)
 }
 /* XLate Table A of Codablock-F Specification and call output
  */
-void SumASCII(uchar **ppOutPos, int Sum, int CharacterSet)
+static void SumASCII(uchar **ppOutPos, int Sum, int CharacterSet)
 {
     switch (CharacterSet){
     case CodeA:
@@ -629,9 +626,8 @@ void SumASCII(uchar **ppOutPos, int Sum, int CharacterSet)
 
 /* Main function called by zint framework
  */
-int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
-    int charCur;
-    int dataLength;
+INTERNAL int codablock(struct zint_symbol *symbol,const unsigned char source[], const size_t length) {
+    int charCur, dataLength;
     int Error;
     int rows, columns, useColumns;
     int fillings;
@@ -640,8 +636,8 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
     int rowCur;
     int characterSetCur;
     int emptyColumns;
-        char dest[1000];
-        int r, c;
+    char dest[1000];
+    int r, c;
 #ifdef _MSC_VER
     CharacterSetTable *T;
     unsigned char *data;
@@ -653,18 +649,18 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
     /* option1: rows 0: automatic, 1..44 */
     rows = symbol->option_1;
     if (rows > 44) {
-        strcpy(symbol->errtxt, "Row parameter not in 0..44 (D10)");
+        strcpy(symbol->errtxt, "410: Rows parameter not in 0..44");
         return ZINT_ERROR_INVALID_OPTION;
     }
     /* option_2: (usable data) columns: 0: automatic, 6..66 */
     columns = symbol->option_2;
     if ( ! (columns <= 0 || (columns >= 6 && columns <=66)) ) {
-        strcpy(symbol->errtxt, "Columns parameter not in 0,6..66 (D11)");
+        strcpy(symbol->errtxt, "411: Columns parameter not in 0,6..66");
         return ZINT_ERROR_INVALID_OPTION;
     }
     /* GS1 not implemented */
-    if  (symbol->input_mode == GS1_MODE) {
-        strcpy(symbol->errtxt, "GS1 mode not supported (D12)");
+    if  ((symbol->input_mode & 0x07) == GS1_MODE) {
+        strcpy(symbol->errtxt, "412: GS1 mode not supported");
         return ZINT_ERROR_INVALID_OPTION;
     }
 #ifndef _MSC_VER
@@ -679,7 +675,7 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
         dataLength++;
     }
     /* Replace all Codes>127 with <fnc4>Code-128 */
-    for (charCur=0;charCur<length;charCur++) {
+    for (charCur = 0; charCur < (int) length; charCur++) {
         if (source[charCur]>127)
         {
             data[dataLength] = aFNC4;
@@ -709,24 +705,25 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
         } else {
             /* use 1/1 aspect/ratio Codablock */
             columns = ((int)floor(sqrt(1.0*dataLength))+5);
-            if (columns > 64)
+            if (columns > 64) {
                 columns = 64;
-                #ifdef _DEBUG
-                printf("Auto column count for %d characters:%d\n",dataLength,columns);
-                #endif
+            }
+            if (symbol->debug & ZINT_DEBUG_PRINT) {
+                printf("Auto column count for %d characters:%d\n", dataLength, columns);
+            }
         }
     }
     /* There are 5 Codewords for Organisation Start(2),row(1),CheckSum,Stop */
     useColumns = columns - 5;
     if ( rows > 0 ) {
         /* row count given */
-        Error=Rows2Columns(T,data,dataLength,&rows,&useColumns,pSet,&fillings);
+        Error = Rows2Columns(symbol, T, dataLength, &rows, &useColumns, pSet, &fillings);
     } else {
         /* column count given */
-        Error=Columns2Rows(T,data,dataLength,&rows,&useColumns,pSet,&fillings);
+        Error = Columns2Rows(symbol, T, dataLength, &rows, &useColumns, pSet, &fillings);
     }
     if (Error != 0) {
-        strcpy(symbol->errtxt, "data string to long (D13)");
+        strcpy(symbol->errtxt, "413: Data string too long");
         return Error;
     }
     /* Checksum */
@@ -740,13 +737,11 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
         }
     }
 
-    #ifdef _DEBUG
-    {   /* start a new level of local variables */
+    if (symbol->debug & ZINT_DEBUG_PRINT) { /* start a new level of local variables */
         int DPos;
         printf("\nData:");
         for (DPos=0 ; DPos< dataLength ; DPos++)
             fputc(data[DPos],stdout);
-
         printf("\n Set:");
         for (DPos=0 ; DPos< dataLength ; DPos++) {
             switch (pSet[DPos]&(CodeA+CodeB+CodeC)) {
@@ -770,7 +765,6 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
             fputc((pSet[DPos]&CFill)==0?'.':'X',stdout);
         fputc('\n',stdout);
     }
-    #endif
 
     columns = useColumns + 5;
 
@@ -866,8 +860,8 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
             while (emptyColumns>0)
             {
                 /* ? Change character set */
-                /* not at first possition (It was then the start set) */
-                /* +++ special case for one-ligner */
+                /* not at first position (It was then the start set) */
+                /* +++ special case for one-liner */
                 if (emptyColumns<useColumns || (rows == 1 && charCur!=0) )
                 {
                     if ((pSet[charCur]&CodeA)!=0)
@@ -970,7 +964,7 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
         pOutPos++;
     } /* End Lineloop */
 
-    #ifdef _DEBUG
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
         /* Dump the output to the screen
          */
         printf("\nCode 128 Code Numbers:\n");
@@ -986,7 +980,7 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
             }
         }
         printf("rows=%i columns=%i fillings=%i\n", rows, columns, fillings);
-    #endif
+    }
 
     /* Paint the C128 patterns */
     for (r = 0; r < rows; r++) {
@@ -997,11 +991,11 @@ int codablock(struct zint_symbol *symbol, unsigned char source[], int length) {
         expand(symbol, dest);
         symbol->row_height[r] = 10;
     }
-    
+
     if (!(symbol->output_options & BARCODE_BIND)) {
         symbol->output_options += BARCODE_BIND;
     }
-        
+
     if (symbol->border_width < 2) {
         symbol->border_width = 2;
     }

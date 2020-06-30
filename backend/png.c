@@ -8,14 +8,14 @@
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,9 +26,10 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
 #ifdef _MSC_VER
@@ -71,12 +72,11 @@ static void writepng_error_handler(png_structp png_ptr, png_const_charp msg) {
     longjmp(graphic->jmpbuf, 1);
 }
 
-int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
+INTERNAL int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     struct mainprog_info_type wpng_info;
     struct mainprog_info_type *graphic;
     png_structp png_ptr;
     png_infop info_ptr;
-    unsigned char *image_data;
     int i, row, column;
     int fgred, fggrn, fgblu, bgred, bggrn, bgblu;
 
@@ -87,7 +87,7 @@ int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
 #endif
 
     graphic = &wpng_info;
-    
+
     graphic->width = symbol->bitmap_width;
     graphic->height = symbol->bitmap_height;
 
@@ -102,14 +102,14 @@ int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     if (symbol->output_options & BARCODE_STDOUT) {
 #ifdef _MSC_VER
         if (-1 == _setmode(_fileno(stdout), _O_BINARY)) {
-            strcpy(symbol->errtxt, "Can't open output file");
+            strcpy(symbol->errtxt, "631: Can't open output file");
             return ZINT_ERROR_FILE_ACCESS;
         }
 #endif
         graphic->outfile = stdout;
     } else {
         if (!(graphic->outfile = fopen(symbol->outfile, "wb"))) {
-            strcpy(symbol->errtxt, "Can't open output file (F32)");
+            strcpy(symbol->errtxt, "632: Can't open output file");
             return ZINT_ERROR_FILE_ACCESS;
         }
     }
@@ -117,21 +117,21 @@ int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     /* Set up error handling routine as proc() above */
     png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, graphic, writepng_error_handler, NULL);
     if (!png_ptr) {
-        strcpy(symbol->errtxt, "Out of memory (F33)");
+        strcpy(symbol->errtxt, "633: Out of memory");
         return ZINT_ERROR_MEMORY;
     }
 
     info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr) {
         png_destroy_write_struct(&png_ptr, NULL);
-        strcpy(symbol->errtxt, "Out of memory (F34)");
+        strcpy(symbol->errtxt, "634: Out of memory");
         return ZINT_ERROR_MEMORY;
     }
 
     /* catch jumping here */
     if (setjmp(graphic->jmpbuf)) {
         png_destroy_write_struct(&png_ptr, &info_ptr);
-        strcpy(symbol->errtxt, "libpng error occurred (F35)");
+        strcpy(symbol->errtxt, "635: libpng error occurred");
         return ZINT_ERROR_MEMORY;
     }
 
@@ -155,9 +155,50 @@ int png_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
 
     /* Pixel Plotting */
     for (row = 0; row < symbol->bitmap_height; row++) {
+        unsigned char *image_data;
         for (column = 0; column < symbol->bitmap_width; column++) {
             i = column * 3;
             switch (*(pixelbuf + (symbol->bitmap_width * row) + column)) {
+                case 'W': // White
+                    outdata[i] = 255;
+                    outdata[i + 1] = 255;
+                    outdata[i + 2] = 255;
+                    break;
+                case 'C': // Cyan
+                    outdata[i] = 0;
+                    outdata[i + 1] = 255;
+                    outdata[i + 2] = 255;
+                    break;
+                case 'B': // Blue
+                    outdata[i] = 0;
+                    outdata[i + 1] = 0;
+                    outdata[i + 2] = 255;
+                    break;
+                case 'M': // Magenta
+                    outdata[i] = 255;
+                    outdata[i + 1] = 0;
+                    outdata[i + 2] = 255;
+                    break;
+                case 'R': // Red
+                    outdata[i] = 255;
+                    outdata[i + 1] = 0;
+                    outdata[i + 2] = 0;
+                    break;
+                case 'Y': // Yellow
+                    outdata[i] = 255;
+                    outdata[i + 1] = 255;
+                    outdata[i + 2] = 0;
+                    break;
+                case 'G': // Green
+                    outdata[i] = 0;
+                    outdata[i + 1] = 255;
+                    outdata[i + 2] = 0;
+                    break;
+                case 'K': // Black
+                    outdata[i] = 0;
+                    outdata[i + 1] = 0;
+                    outdata[i + 2] = 0;
+                    break;
                 case '1':
                     outdata[i] = fgred;
                     outdata[i + 1] = fggrn;

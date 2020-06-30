@@ -1,8 +1,6 @@
-/* large.h - Handles binary manipulation of large numbers */
-
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2007-2017 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -28,25 +26,22 @@
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
-*/
+ */
 /* vim: set ts=4 sw=4 et : */
-#ifndef __LARGE_H
-#define __LARGE_H
+
+#ifndef __GENERAL_FIELD_H
+#define __GENERAL_FIELD_H
+
+#define NUMERIC         110
+#define ALPHA           97
+#define ISOIEC          105
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-INTERNAL void binary_load(short int reg[], char data[], const size_t src_len);
-INTERNAL void binary_add(short int accumulator[], short int input_buffer[]);
-INTERNAL void binary_subtract(short int accumulator[], short int input_buffer[]);
-INTERNAL void shiftdown(short int buffer[]);
-INTERNAL void shiftup(short int buffer[]);
-INTERNAL short int islarger(short int accum[], short int reg[]);
-INTERNAL void binary_multiply(short int reg[], char data[]);
-
+    INTERNAL int general_field_encode(char* general_field, int* p_mode, int* p_last_digit, char binary_string[]);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif /* __LARGE_H */
+#endif /* __GENERAL_FIELD_H */
