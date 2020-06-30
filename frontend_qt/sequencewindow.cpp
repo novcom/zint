@@ -1,6 +1,6 @@
 /*
     Zint Barcode Generator - the open source barcode generator
-    Copyright (C) 2009-2016 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2009-2017 Robin Stuart <rstuart114@gmail.com>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include <QUiLoader>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QSettings>
 
 #include "sequencewindow.h"
 #include "exportwindow.h"
@@ -30,8 +31,14 @@
 SequenceWindow::SequenceWindow()
 {
 	setupUi(this);
+        QSettings settings;
 	QValidator *intvalid = new QIntValidator(this);
-	
+
+        linStartVal->setText(settings.value("studio/sequence/start_value", "1").toString());
+        linEndVal->setText(settings.value("studio/sequence/end_value", "10").toString());
+        linIncVal->setText(settings.value("studio/sequence/increment", "1").toString());
+        linFormat->setText(settings.value("studio/sequence/format", "$$$$$$").toString());
+
 	linStartVal->setValidator(intvalid);
 	linEndVal->setValidator(intvalid);
 	linIncVal->setValidator(intvalid);
@@ -45,6 +52,12 @@ SequenceWindow::SequenceWindow()
 
 SequenceWindow::~SequenceWindow()
 {
+    QSettings settings;
+
+    settings.setValue("studio/sequence/start_value", linStartVal->text());
+    settings.setValue("studio/sequence/end_value", linEndVal->text());
+    settings.setValue("studio/sequence/increment", linIncVal->text());
+    settings.setValue("studio/sequence/format", linFormat->text());
 }
 
 void SequenceWindow::quit_now()
@@ -62,18 +75,17 @@ QString SequenceWindow::apply_format(QString raw_number)
 	QString adjusted, reversed;
 	QString format;
 	int format_len, input_len, i, inpos;
-	char format_char;
 	QChar format_qchar;
-	
+
 	format = linFormat->text();
 	input_len = raw_number.length();
 	format_len = format.length();
-	
+
 	inpos = input_len;
-	
+
 	for(i = format_len; i > 0; i--) {
 		format_qchar = format[i - 1];
-		format_char = format_qchar.toLatin1();
+        char format_char = format_qchar.toLatin1();
 		switch(format_char) {
 			case '#':
 				if (inpos > 0) {
@@ -104,11 +116,11 @@ QString SequenceWindow::apply_format(QString raw_number)
 				break;
 		}
 	}
-	
+
 	for(i = format_len; i > 0; i--) {
 		reversed += adjusted[i - 1];
 	}
-	
+
 	return reversed;
 }
 
@@ -117,32 +129,32 @@ void SequenceWindow::create_sequence()
 	QString startval, endval, incval, part, outputtext;
 	int start, stop, step, i;
 	bool ok;
-	
+
 	startval = linStartVal->text();
 	endval = linEndVal->text();
 	incval = linIncVal->text();
 	start = startval.toInt(&ok, 10);
 	stop = endval.toInt(&ok, 10);
 	step = incval.toInt(&ok, 10);
-	
+
 	if((stop <= start) || (step <= 0)) {
 		QMessageBox::critical(this, tr("Sequence Error"), tr("One or more of the input values is incorrect."));
 		return;
 	}
-	
+
 	for(i = start; i <= stop; i += step) {
 		part = apply_format(QString::number(i, 10));
 		part += '\n';
 		outputtext += part;
 	}
-	
+
 	txtPreview->setPlainText(outputtext);
 }
 
 void SequenceWindow::check_generate()
 {
 	QString preview_copy;
-	
+
 	preview_copy = txtPreview->toPlainText();
 	if(preview_copy.isEmpty()) {
 		btnExport->setEnabled(false);
@@ -153,36 +165,33 @@ void SequenceWindow::check_generate()
 
 void SequenceWindow::import()
 {
-	//QString fileName;
-	//QFileDialog fdialog;
-	QFile file;
-	QString selectedFilter;
-	
-	//fdialog.setFileMode(QFileDialog::ExistingFile);
-	
-	//if(fdialog.exec()) {
-	//	fileName = fdialog.selectedFiles().at(0);
-	//} else {
-	//	return;
-	//}
+    QSettings settings;
+    QFileDialog import_dialog;
+    QString filename;
+    QFile file;
+    QByteArray outstream;
 
-	QString fileName = QFileDialog::getOpenFileName(this,
-                                 tr("Import File"),
-                                 "./",
-                                 tr("All Files (*);;Text Files (*.txt)"));
-     if (fileName.isEmpty())
-         return;
-	
-	file.setFileName(fileName);
-	if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-		QMessageBox::critical(this, tr("Open Error"), tr("Could not open selected file."));
-		return;
-	}
+    import_dialog.setWindowTitle("Import File");
+    import_dialog.setDirectory(settings.value("studio/default_dir", QDir::toNativeSeparators(QDir::homePath())).toString());
 
-	QByteArray outstream = file.readAll();
+    if (import_dialog.exec()) {
+        filename = import_dialog.selectedFiles().at(0);
+    } else {
+        return;
+    }
 
-	txtPreview->setPlainText(QString(outstream));
-	file.close();
+    file.setFileName(filename);
+    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, tr("Open Error"), tr("Could not open selected file."));
+        return;
+    }
+
+    outstream = file.readAll();
+
+    txtPreview->setPlainText(QString(outstream));
+    file.close();
+
+    settings.setValue("studio/default_dir", filename.mid(0, filename.lastIndexOf(QDir::separator())));
 }
 
 void SequenceWindow::generate_sequence()
@@ -192,3 +201,4 @@ void SequenceWindow::generate_sequence()
 	dlg.output_data = txtPreview->toPlainText();
 	dlg.exec();
 }
+
