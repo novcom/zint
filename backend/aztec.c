@@ -2,20 +2,20 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2009-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2009-2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,634 +26,798 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #ifdef _MSC_VER
-#include <malloc.h> 
+#include <malloc.h>
 #endif
 #include "common.h"
 #include "aztec.h"
 #include "reedsol.h"
 
+#define AZTEC_MAX_CAPACITY   19968 /* ISO/IEC 24778:2008 5.3 Table 1 Maximum Symbol Bit Capacity */
+#define AZTEC_BIN_CAPACITY   17940 /* Above less 169 * 12 = 2028 bits (169 = 10% of 1664 + 3) */
+
 static int AztecMap[22801];
 
-/**
- * Shorten the string by one character
- */
-static void mapshorten(int *charmap, int *typemap, const int start, const int length) {
-    memmove(charmap + start + 1, charmap + start + 2, (length - 1) * sizeof (int));
-    memmove(typemap + start + 1, typemap + start + 2, (length - 1) * sizeof (int));
-}
+static int count_doubles(const unsigned char source[], const int posn, const size_t src_len) {
+    int c = 0;
+    int i = posn;
+    int cond = 1;
 
-/**
- * Insert a character into the middle of a string at position posn
- */
-/*
-static void insert(char binary_string[], const size_t posn, const char newbit) {
-    size_t i, end;
-
-    end = strlen(binary_string);
-    for (i = end; i > posn; i--) {
-        binary_string[i] = binary_string[i - 1];
-    }
-    binary_string[posn] = newbit;
-}
-*/
-
-/**
- * Encode input data into a binary string
- */
-static int aztec_text_process(const unsigned char source[], const unsigned int src_len, char binary_string[], const int gs1, const int eci, int debug) {
-    int i, j, k, bytes;
-    int curtable, newtable, lasttable, chartype, maplength, blocks;
-#ifndef _MSC_VER
-    int charmap[src_len * 2], typemap[src_len * 2];
-    int blockmap[2][src_len];
-#else
-    int* charmap = (int*) _alloca(src_len * 2 * sizeof (int));
-    int* typemap = (int*) _alloca(src_len * 2 * sizeof (int));
-    int* blockmap[2];
-    blockmap[0] = (int*) _alloca(src_len * sizeof (int));
-    blockmap[1] = (int*) _alloca(src_len * sizeof (int));
-#endif
-    /* Lookup input string in encoding table */
-    maplength = 0;
-
-    if (gs1) {
-        /* Add FNC1 to beginning of GS1 messages */
-        charmap[maplength] = 0;
-        typemap[maplength++] = PUNC;
-        charmap[maplength] = 400;
-        typemap[maplength++] = PUNC;
-    } else if (eci != 3) {
-        /* Set ECI mode */
-        charmap[maplength] = 0;
-        typemap[maplength++] = PUNC;
-        if (eci < 10) {
-            charmap[maplength] = 401; // FLG(1)
-            typemap[maplength++] = PUNC;
-            charmap[maplength] = 502 + eci;
-            typemap[maplength++] = PUNC;
+    do {
+        if (((source[i] == '.') || (source[i] == ',')) && (source[i + 1] == ' ')) {
+            c++;
         } else {
-            charmap[maplength] = 402; // FLG(2)
-            typemap[maplength++] = PUNC;
-            charmap[maplength] = 502 + (eci / 10);
-            typemap[maplength++] = PUNC;
-            charmap[maplength] = 502 + (eci % 10);
-            typemap[maplength++] = PUNC;
+            cond = 0;
         }
+        i += 2;
+    } while ((i < (int) src_len) && cond);
 
+    return c;
+}
+
+static int count_cr(unsigned char source[], int posn, int length) {
+    int c = 0;
+    int i = posn;
+    int cond = 1;
+
+    do {
+        if (source[i] == 13) {
+            c++;
+        } else {
+            cond = 0;
+        }
+        i++;
+    } while ((i < length) && cond);
+
+    return c;
+}
+
+static int count_dotcomma(unsigned char source[], int posn, int length) {
+    int c = 0;
+    int i = posn;
+    int cond = 1;
+
+    do {
+        if ((source[i] == '.') || (source[i] == ',')) {
+            c++;
+        } else {
+            cond = 0;
+        }
+        i++;
+    } while ((i < length) && cond);
+
+    return c;
+}
+
+static int count_spaces(unsigned char source[], int posn, int length) {
+    int c = 0;
+    int i = posn;
+    int cond = 1;
+
+    do {
+        if (source[i] == ' ') {
+            c++;
+        } else {
+            cond = 0;
+        }
+        i++;
+    } while ((i < length) && cond);
+
+    return c;
+}
+
+static char get_next_mode(char encode_mode[], const size_t src_len, const int posn) {
+    int i = posn;
+
+    do {
+        i++;
+    } while ((i < (int) src_len) && (encode_mode[i] == encode_mode[posn]));
+    if (i >= (int) src_len) {
+        return 'E';
+    } else {
+        return encode_mode[i];
     }
+}
+
+static int az_bin_append(const int arg, const int length, char *binary) {
+    size_t posn = strlen(binary);
+
+    if (posn + length > AZTEC_BIN_CAPACITY) {
+        return 0; /* Fail */
+    }
+    bin_append_posn(arg, length, binary, posn);
+
+    binary[posn + length] = '\0';
+
+    return 1; /* Success */
+}
+
+static int aztec_text_process(const unsigned char source[], const size_t src_len, char binary_string[], const int gs1, const int eci, const int debug) {
+
+    int i, j;
+    char current_mode;
+    int count;
+    char next_mode;
+    int reduced_length;
+    int byte_mode = 0;
+
+#ifndef _MSC_VER
+    char encode_mode[src_len + 1];
+    unsigned char reduced_source[src_len + 1];
+    char reduced_encode_mode[src_len + 1];
+#else
+    char *encode_mode = (char *) _alloca(src_len + 1);
+    unsigned char *reduced_source = (unsigned char *) _alloca(src_len + 1);
+    char *reduced_encode_mode = (char *) _alloca(src_len + 1);
+#endif
 
     for (i = 0; i < (int) src_len; i++) {
-        if ((gs1) && (source[i] == '[')) {
-            /* FNC1 represented by FLG(0) */
-            charmap[maplength] = 0;
-            typemap[maplength++] = PUNC;
-            charmap[maplength] = 400;
-            typemap[maplength++] = PUNC;
+        if (source[i] >= 128) {
+            encode_mode[i] = 'B';
         } else {
-            if ((source[i] > 127) || (source[i] == 0)) {
-                charmap[maplength] = source[i];
-                typemap[maplength++] = BINARY;
-            } else {
-                charmap[maplength] = AztecSymbolChar[source[i]];
-                typemap[maplength++] = AztecCodeSet[source[i]];
-            }
+            encode_mode[i] = AztecModes[(int) source[i]];
         }
     }
 
-    /* Look for double character encoding possibilities */
+    // Deal first with letter combinations which can be combined to one codeword
+    // Combinations are (CR LF) (. SP) (, SP) (: SP) in Punct mode
+    current_mode = 'U';
+    for (i = 0; i < (int) src_len - 1; i++) {
+        // Combination (CR LF) should always be in Punct mode
+        if ((source[i] == 13) && (source[i + 1] == 10)) {
+            encode_mode[i] = 'P';
+            encode_mode[i + 1] = 'P';
+        }
+
+        // Combination (: SP) should always be in Punct mode
+        if ((source[i] == ':') && (source[i + 1] == ' ')) {
+            encode_mode[i + 1] = 'P';
+        }
+
+        // Combinations (. SP) and (, SP) sometimes use fewer bits in Digit mode
+        if (((source[i] == '.') || (source[i] == ',')) && (source[i + 1] == ' ') && (encode_mode[i] == 'X')) {
+            count = count_doubles(source, i, src_len);
+            next_mode = get_next_mode(encode_mode, src_len, i);
+
+            if (current_mode == 'U') {
+                if ((next_mode == 'D') && (count <= 5)) {
+                    for (j = 0; j < (2 * count); j++) {
+                        encode_mode[i + j] = 'D';
+                    }
+                }
+            }
+
+            if (current_mode == 'L') {
+                if ((next_mode == 'U') && (count == 1)) {
+                    encode_mode[i] = 'D';
+                    encode_mode[i + 1] = 'D';
+                }
+                if ((next_mode == 'D') && (count <= 4)) {
+                    for (j = 0; j < (2 * count); j++) {
+                        encode_mode[i + j] = 'D';
+                    }
+                }
+            }
+
+            if (current_mode == 'M') {
+                if ((next_mode == 'D') && (count == 1)) {
+                    encode_mode[i] = 'D';
+                    encode_mode[i + 1] = 'D';
+                }
+            }
+
+            if (current_mode == 'D') {
+                if ((next_mode != 'D') && (count <= 4)) {
+                    for (j = 0; j < (2 * count); j++) {
+                        encode_mode[i + j] = 'D';
+                    }
+                }
+                if ((next_mode == 'D') && (count <= 7)) {
+                    for (j = 0; j < (2 * count); j++) {
+                        encode_mode[i + j] = 'D';
+                    }
+                }
+            }
+
+            // Default is Punct mode
+            if (encode_mode[i] == 'X') {
+                encode_mode[i] = 'P';
+                encode_mode[i + 1] = 'P';
+            }
+        }
+
+        if ((encode_mode[i] != 'X') && (encode_mode[i] != 'B')) {
+            current_mode = encode_mode[i];
+        }
+    }
+
+    if (debug) {
+        printf("First Pass:\n");
+        for (i = 0; i < (int) src_len; i++) {
+            printf("%c", encode_mode[i]);
+        }
+        printf("\n");
+    }
+
+    // Reduce two letter combinations to one codeword marked as [abcd] in Punct mode
     i = 0;
-    do {
-        if (((charmap[i] == 300) && (charmap[i + 1] == 11))
-                && ((typemap[i] == PUNC) && (typemap[i + 1] == PUNC))) {
-            /* CR LF combination */
-            charmap[i] = 2;
-            typemap[i] = PUNC;
-            mapshorten(charmap, typemap, i, maplength);
-            maplength--;
-        }
-
-        if (((charmap[i] == 302) && (charmap[i + 1] == 1))
-                && ((typemap[i] == 24) && (typemap[i + 1] == 23))) {
-            /* . SP combination */
-            charmap[i] = 3;
-            typemap[i] = PUNC;
-            mapshorten(charmap, typemap, i, maplength);
-            maplength--;
-        }
-
-        if (((charmap[i] == 301) && (charmap[i + 1] == 1))
-                && ((typemap[i] == 24) && (typemap[i + 1] == 23))) {
-            /* , SP combination */
-            charmap[i] = 4;
-            typemap[i] = PUNC;
-            mapshorten(charmap, typemap, i, maplength);
-            maplength--;
-        }
-
-        if (((charmap[i] == 21) && (charmap[i + 1] == 1))
-                && ((typemap[i] == PUNC) && (typemap[i + 1] == 23))) {
-            /* : SP combination */
-            charmap[i] = 5;
-            typemap[i] = PUNC;
-            mapshorten(charmap, typemap, i, maplength);
-            maplength--;
-        }
-
-        i++;
-    } while (i < (maplength - 1));
-
-    /* look for blocks of characters which use the same table */
-    blocks = 1;
-    blockmap[0][0] = typemap[0];
-    blockmap[1][0] = 1;
-    for (i = 1; i < maplength; i++) {
-        if (typemap[i] == typemap[i - 1]) {
-            blockmap[1][blocks - 1]++;
-        } else {
-            blocks++;
-            blockmap[0][blocks - 1] = typemap[i];
-            blockmap[1][blocks - 1] = 1;
-        }
-    }
-
-    if (blockmap[0][0] & 1) {
-        blockmap[0][0] = 1;
-    }
-    if (blockmap[0][0] & 2) {
-        blockmap[0][0] = 2;
-    }
-    if (blockmap[0][0] & 4) {
-        blockmap[0][0] = 4;
-    }
-    if (blockmap[0][0] & 8) {
-        blockmap[0][0] = 8;
-    }
-
-    if (blocks > 1) {
-        /* look for adjacent blocks which can use the same table (left to right search) */
-        for (i = 1; i < blocks; i++) {
-            if (blockmap[0][i] & blockmap[0][i - 1]) {
-                blockmap[0][i] = (blockmap[0][i] & blockmap[0][i - 1]);
-            }
-        }
-
-        if (blockmap[0][blocks - 1] & 1) {
-            blockmap[0][blocks - 1] = 1;
-        }
-        if (blockmap[0][blocks - 1] & 2) {
-            blockmap[0][blocks - 1] = 2;
-        }
-        if (blockmap[0][blocks - 1] & 4) {
-            blockmap[0][blocks - 1] = 4;
-        }
-        if (blockmap[0][blocks - 1] & 8) {
-            blockmap[0][blocks - 1] = 8;
-        }
-
-        /* look for adjacent blocks which can use the same table (right to left search) */
-        for (i = blocks - 1 - 1; i >= 0; i--) {
-            if (blockmap[0][i] & blockmap[0][i + 1]) {
-                blockmap[0][i] = (blockmap[0][i] & blockmap[0][i + 1]);
-            }
-        }
-
-        /* determine the encoding table for characters which do not fit with adjacent blocks */
-        for (i = 1; i < blocks; i++) {
-            if (blockmap[0][i] & 8) {
-                blockmap[0][i] = 8;
-            }
-            if (blockmap[0][i] & 4) {
-                blockmap[0][i] = 4;
-            }
-            if (blockmap[0][i] & 2) {
-                blockmap[0][i] = 2;
-            }
-            if (blockmap[0][i] & 1) {
-                blockmap[0][i] = 1;
-            }
-        }
-
-        /* Combine blocks of the same type */
-        i = 0;
-        do {
-            if (blockmap[0][i] == blockmap[0][i + 1]) {
-                blockmap[1][i] += blockmap[1][i + 1];
-                for (j = i + 1; j < blocks - 1; j++) {
-                    blockmap[0][j] = blockmap[0][j + 1];
-                    blockmap[1][j] = blockmap[1][j + 1];
-                }
-                blocks--;
-            } else {
-                i++;
-            }
-        } while (i < blocks - 1);
-    }
-
-    /* Put the adjusted block data back into typemap */
     j = 0;
-    for (i = 0; i < blocks; i++) {
-        if ((blockmap[1][i] < 3) && (blockmap[0][i] != 32)) {
-            /* Shift character(s) needed */
-            for (k = 0; k < blockmap[1][i]; k++) {
-                typemap[j + k] = blockmap[0][i] + 64;
-            }
-        } else { /* Latch character (or byte mode) needed */
-            for (k = 0; k < blockmap[1][i]; k++) {
-                typemap[j + k] = blockmap[0][i];
-            }
+    do {
+        if ((source[i] == 13) && (source[i + 1] == 10)) { // CR LF
+            reduced_source[j] = 'a';
+            reduced_encode_mode[j] = encode_mode[i];
+            i += 2;
+        } else if (((source[i] == '.') && (source[i + 1] == ' ')) && (encode_mode[i] == 'P')) {
+            reduced_source[j] = 'b';
+            reduced_encode_mode[j] = encode_mode[i];
+            i += 2;
+        } else if (((source[i] == ',') && (source[i + 1] == ' ')) && (encode_mode[i] == 'P')) {
+            reduced_source[j] = 'c';
+            reduced_encode_mode[j] = encode_mode[i];
+            i += 2;
+        } else if ((source[i] == ':') && (source[i + 1] == ' ')) {
+            reduced_source[j] = 'd';
+            reduced_encode_mode[j] = encode_mode[i];
+            i += 2;
+        } else {
+            reduced_source[j] = source[i];
+            reduced_encode_mode[j] = encode_mode[i];
+            i++;
         }
-        j += blockmap[1][i];
-    }
+        j++;
+    } while (i < (int) src_len);
 
-    /* Don't shift an initial capital letter */
-    if (typemap[0] == 65) {
-        typemap[0] = 1;
-    };
+    reduced_length = j;
 
-    /* Problem characters (those that appear in different tables with
-     * different values) can now be resolved into their tables */
-    for (i = 0; i < maplength; i++) {
-        if ((charmap[i] >= 300) && (charmap[i] < 400)) {
-            curtable = typemap[i];
-            if (curtable > 64) {
-                curtable -= 64;
-            }
-            switch (charmap[i]) {
-                case 300: /* Carriage Return */
-                    switch (curtable) {
-                        case PUNC: charmap[i] = 1;
-                            break;
-                        case MIXED: charmap[i] = 14;
-                            break;
-                    }
-                    break;
-                case 301: /* Comma */
-                    switch (curtable) {
-                        case PUNC: charmap[i] = 17;
-                            break;
-                        case DIGIT: charmap[i] = 12;
-                            break;
-                    }
-                    break;
-                case 302: /* Full Stop */
-                    switch (curtable) {
-                        case PUNC: charmap[i] = 19;
-                            break;
-                        case DIGIT: charmap[i] = 13;
-                            break;
-                    }
-                    break;
-            }
-        }
-    }
-    *binary_string = '\0';
+    current_mode = 'U';
+    for(i = 0; i < reduced_length; i++) {
+        // Resolve Carriage Return (CR) which can be Punct or Mixed mode
+        if (reduced_source[i] == 13) {
+            count = count_cr(reduced_source, i, reduced_length);
+            next_mode = get_next_mode(reduced_encode_mode, reduced_length, i);
 
-    curtable = UPPER; /* start with UPPER table */
-    lasttable = UPPER;
-    for (i = 0; i < maplength; i++) {
-        newtable = curtable;
-        if ((typemap[i] != curtable) && (charmap[i] < 400)) {
-            /* Change table */
-            if (curtable == BINARY) {
-                /* If ending binary mode the current table is the same as when entering binary mode */
-                curtable = lasttable;
-                newtable = lasttable;
+            if ((current_mode == 'U') && ((next_mode == 'U') || (next_mode == 'B')) && (count == 1)) {
+                reduced_encode_mode[i] = 'P';
             }
-            if (typemap[i] > 64) {
-                /* Shift character */
-                switch (typemap[i]) {
-                    case (64 + UPPER): /* To UPPER */
-                        switch (curtable) {
-                            case LOWER: /* US */
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("US ");
-                                break;
-                            case MIXED: /* UL */
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                            case PUNC: /* UL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                            case DIGIT: /* US */
-                                bin_append(15, 4, binary_string);
-                                if (debug) printf("US ");
-                                break;
-                        }
-                        break;
-                    case (64 + LOWER): /* To LOWER */
-                        switch (curtable) {
-                            case UPPER: /* LL */
-                            case MIXED:
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                            case PUNC: /* UL LL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                            case DIGIT: /* UL LL */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                        }
-                        break;
-                    case (64 + MIXED): /* To MIXED */
-                        switch (curtable) {
-                            case UPPER: /* ML */
-                            case LOWER:
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                            case PUNC: /* UL ML */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                            case DIGIT: /* UL ML */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                        }
-                        break;
-                    case (64 + PUNC): /* To PUNC */
-                        switch (curtable) {
-                            case UPPER: /* PS */
-                            case LOWER:
-                            case MIXED:
-                            case DIGIT:
-                                bin_append(0, 5, binary_string);
-                                if (debug) printf("PS ");
-                                break;
-                        }
-                        break;
-                    case (64 + DIGIT): /* To DIGIT */
-                        switch (curtable) {
-                            case UPPER: /* DL */
-                            case LOWER:
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                            case MIXED: /* UL DL */
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                            case PUNC: /* UL DL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                        }
-                        break;
+
+            if ((current_mode == 'L') && ((next_mode == 'L') || (next_mode == 'B')) && (count == 1)) {
+                reduced_encode_mode[i] = 'P';
+            }
+
+            if ((current_mode == 'P') || (next_mode == 'P')) {
+                reduced_encode_mode[i] = 'P';
+            }
+
+            if (current_mode == 'D') {
+                if (((next_mode == 'E') || (next_mode == 'U') || (next_mode == 'D') || (next_mode == 'B')) && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'P';
+                    }
                 }
-            } else {
-                /* Latch character */
-                switch (typemap[i]) {
-                    case UPPER: /* To UPPER */
-                        switch (curtable) {
-                            case LOWER: /* ML UL */
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                            case MIXED: /* UL */
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                            case PUNC: /* UL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                            case DIGIT: /* UL */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                newtable = UPPER;
-                                break;
-                        }
-                        break;
-                    case LOWER: /* To LOWER */
-                        switch (curtable) {
-                            case UPPER: /* LL */
-                            case MIXED:
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                            case PUNC: /* UL LL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                            case DIGIT: /* UL LL */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(28, 5, binary_string);
-                                if (debug) printf("LL ");
-                                newtable = LOWER;
-                                break;
-                        }
-                        break;
-                    case MIXED: /* To MIXED */
-                        switch (curtable) {
-                            case UPPER: /* ML */
-                            case LOWER:
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                            case PUNC: /* UL ML */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                            case DIGIT: /* UL ML */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                newtable = MIXED;
-                                break;
-                        }
-                        break;
-                    case PUNC: /* To PUNC */
-                        switch (curtable) {
-                            case UPPER: /* ML PL */
-                            case LOWER:
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("PL ");
-                                newtable = PUNC;
-                                break;
-                            case MIXED: /* PL */
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("PL ");
-                                newtable = PUNC;
-                                break;
-                            case DIGIT: /* UL ML PL */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("ML ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("PL ");
-                                newtable = PUNC;
-                                break;
-                        }
-                        break;
-                    case DIGIT: /* To DIGIT */
-                        switch (curtable) {
-                            case UPPER: /* DL */
-                            case LOWER:
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                            case MIXED: /* UL DL */
-                                bin_append(29, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                            case PUNC: /* UL DL */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(30, 5, binary_string);
-                                if (debug) printf("DL ");
-                                newtable = DIGIT;
-                                break;
-                        }
-                        break;
-                    case BINARY: /* To BINARY */
-                        lasttable = curtable;
-                        switch (curtable) {
-                            case UPPER: /* BS */
-                            case LOWER:
-                            case MIXED:
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("BS ");
-                                newtable = BINARY;
-                                break;
-                            case PUNC: /* UL BS */
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("BS ");
-                                lasttable = UPPER;
-                                newtable = BINARY;
-                                break;
-                            case DIGIT: /* UL BS */
-                                bin_append(14, 4, binary_string);
-                                if (debug) printf("UL ");
-                                bin_append(31, 5, binary_string);
-                                if (debug) printf("BS ");
-                                lasttable = UPPER;
-                                newtable = BINARY;
-                                break;
-                        }
+                if ((next_mode == 'L') && (count == 1)) {
+                    reduced_encode_mode[i] = 'P';
+                }
+            }
 
-                        bytes = 0;
-                        do {
-                            bytes++;
-                        } while (typemap[i + (bytes - 1)] == BINARY);
-                        bytes--;
+            // Default is Mixed mode
+            if (reduced_encode_mode[i] == 'X') {
+                reduced_encode_mode[i] = 'M';
+            }
+        }
 
-                        if (bytes > 2079) {
-                            return ZINT_ERROR_TOO_LONG;
-                        }
+        // Resolve full stop and comma which can be in Punct or Digit mode
+        if ((reduced_source[i] == '.') || (reduced_source[i] == ',')) {
+            count = count_dotcomma(reduced_source, i, reduced_length);
+            next_mode = get_next_mode(reduced_encode_mode, reduced_length, i);
 
-                        if (bytes > 31) {
-                            /* Put 00000 followed by 11-bit number of bytes less 31 */
-                            bin_append(0, 5, binary_string);
-                            bin_append(bytes - 31, 11, binary_string);
-                        } else {
-                            /* Put 5-bit number of bytes */
-                            bin_append(bytes, 5, binary_string);
-                        }
-                        if (debug) printf("(%d bytes) ", bytes);
+            if (current_mode == 'U') {
+                if (((next_mode == 'U') || (next_mode == 'L') || (next_mode == 'M') || (next_mode == 'B')) && (count == 1)) {
+                    reduced_encode_mode[i] = 'P';
+                }
+            }
 
-                        break;
+            if (current_mode == 'L') {
+                if ((next_mode == 'L') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'P';
+                    }
+                }
+                if (((next_mode == 'M') || (next_mode == 'B')) && (count == 1)) {
+                    reduced_encode_mode[i] = 'P';
+                }
+            }
+
+            if (current_mode == 'M') {
+                if (((next_mode == 'E') || (next_mode == 'U') || (next_mode == 'L') || (next_mode == 'M')) && (count <= 4)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'P';
+                    }
+                }
+                if ((next_mode == 'B') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'P';
+                    }
+                }
+            }
+
+            if ((current_mode == 'P') && (next_mode != 'D') && (count <= 9)) {
+                for (j = 0; j < count; j++) {
+                    reduced_encode_mode[i + j] = 'P';
+                }
+            }
+
+            // Default is Digit mode
+            if (reduced_encode_mode[i] == 'X') {
+                reduced_encode_mode[i] = 'D';
+            }
+        }
+
+        // Resolve Space (SP) which can be any mode except Punct
+        if (reduced_source[i] == ' ') {
+            count = count_spaces(reduced_source, i, reduced_length);
+            next_mode = get_next_mode(reduced_encode_mode, reduced_length, i);
+
+            if (current_mode == 'U') {
+                if ((next_mode == 'E') && (count <= 5)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'U';
+                    }
+                }
+                if (((next_mode == 'U') || (next_mode == 'L') || (next_mode == 'M') || (next_mode == 'P') || (next_mode == 'B')) && (count <= 9)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'U';
+                    }
+                }
+            }
+
+            if (current_mode == 'L') {
+                if ((next_mode == 'E') && (count <= 5)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'L';
+                    }
+                }
+                if ((next_mode == 'U') && (count == 1)) {
+                    reduced_encode_mode[i] = 'L';
+                }
+                if ((next_mode == 'L') && (count <= 14)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'L';
+                    }
+                }
+                if (((next_mode == 'M') || (next_mode == 'P') || (next_mode == 'B')) && (count <= 9)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'L';
+                    }
+                }
+            }
+
+            if (current_mode == 'M') {
+                if (((next_mode == 'E') || (next_mode == 'U')) && (count <= 9)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'M';
+                    }
+                }
+
+                if (((next_mode == 'L') || (next_mode == 'B')) && (count <= 14)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'M';
+                    }
+                }
+
+                if (((next_mode == 'M') || (next_mode == 'P')) && (count <= 19)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'M';
+                    }
+                }
+            }
+
+            if (current_mode == 'P') {
+                if ((next_mode == 'E') && (count <= 5)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'U';
+                    }
+                }
+
+                if (((next_mode == 'U') || (next_mode == 'L') || (next_mode == 'M') || (next_mode == 'P') || (next_mode == 'B')) && (count <= 9)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'U';
+                    }
+                }
+            }
+
+            // Default is Digit mode
+            if (reduced_encode_mode[i] == 'X') {
+                reduced_encode_mode[i] = 'D';
+            }
+        }
+
+        if (reduced_encode_mode[i] != 'B') {
+            current_mode = reduced_encode_mode[i];
+        }
+    }
+
+    // Decide when to use P/S instead of P/L and U/S instead of U/L
+    current_mode = 'U';
+    for(i = 0; i < reduced_length; i++) {
+
+        if (reduced_encode_mode[i] != current_mode) {
+
+            for (count = 0; ((i + count) <= reduced_length) && (reduced_encode_mode[i + count] == reduced_encode_mode[i]); count++);
+            next_mode = get_next_mode(reduced_encode_mode, reduced_length, i);
+
+            if (reduced_encode_mode[i] == 'P') {
+                if ((current_mode == 'U') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'p';
+                    }
+                }
+
+                if ((current_mode == 'L') && (next_mode != 'U') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'p';
+                    }
+                }
+
+                if ((current_mode == 'L') && (next_mode == 'U') && (count == 1)) {
+                    reduced_encode_mode[i] = 'p';
+                }
+
+                if ((current_mode == 'M') && (next_mode != 'M') && (count == 1)) {
+                    reduced_encode_mode[i] = 'p';
+                }
+
+                if ((current_mode == 'M') && (next_mode == 'M') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'p';
+                    }
+                }
+
+                if ((current_mode == 'D') && (next_mode != 'D') && (count <= 3)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'p';
+                    }
+                }
+
+                if ((current_mode == 'D') && (next_mode == 'D') && (count <= 6)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'p';
+                    }
+                }
+            }
+
+            if (reduced_encode_mode[i] == 'U') {
+                if ((current_mode == 'L') && ((next_mode == 'L') || (next_mode == 'M')) && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'u';
+                    }
+                }
+
+                if ((current_mode == 'L') && ((next_mode == 'E') || (next_mode == 'D') || (next_mode == 'B') || (next_mode == 'P')) && (count == 1)) {
+                    reduced_encode_mode[i] = 'u';
+                }
+
+                if ((current_mode == 'D') && (next_mode == 'D') && (count == 1)) {
+                    reduced_encode_mode[i] = 'u';
+                }
+
+                if ((current_mode == 'D') && (next_mode == 'P') && (count <= 2)) {
+                    for (j = 0; j < count; j++) {
+                        reduced_encode_mode[i + j] = 'u';
+                    }
                 }
             }
         }
-        /* Add data to the binary string */
-        curtable = newtable;
-        chartype = typemap[i];
-        if (chartype > 64) {
-            chartype -= 64;
+
+        if ((reduced_encode_mode[i] != 'p') && (reduced_encode_mode[i] != 'u') && (reduced_encode_mode[i] != 'B')) {
+            current_mode = reduced_encode_mode[i];
         }
-        switch (chartype) {
-            case UPPER:
-            case LOWER:
-            case MIXED:
-            case PUNC:
-                if ((charmap[i] >= 400) && (charmap[i] < 500)) {
-                    bin_append(charmap[i] - 400, 3, binary_string);
-                    if (debug) printf("FLG(%d) ", charmap[i] - 400);
-                } else if (charmap[i] >= 500) {
-                    bin_append(charmap[i] - 500, 4, binary_string);
-                    if (debug) printf("[%d] ", charmap[i] - 500);
+    }
+
+    if (debug) {
+        for (i = 0; i < reduced_length; i++) {
+            printf("%c", reduced_source[i]);
+        }
+        printf("\n");
+        for (i = 0; i < reduced_length; i++) {
+            printf("%c", reduced_encode_mode[i]);
+        }
+        printf("\n");
+    }
+
+    strcpy(binary_string, "");
+
+    if (gs1) {
+        bin_append(0, 5, binary_string); // P/S
+        bin_append(0, 5, binary_string); // FLG(n)
+        bin_append(0, 3, binary_string); // FLG(0)
+    }
+
+    if (eci != 0) {
+        bin_append(0, 5, binary_string); // P/S
+        bin_append(0, 5, binary_string); // FLG(n)
+        if (eci < 10) {
+            bin_append(1, 3, binary_string); // FLG(1)
+            bin_append(2 + eci, 4, binary_string);
+        }
+        if ((eci >= 10) && (eci <= 99)) {
+            bin_append(2, 3, binary_string); // FLG(2)
+            bin_append(2 + (eci / 10), 4, binary_string);
+            bin_append(2 + (eci % 10), 4, binary_string);
+        }
+        if ((eci >= 100) && (eci <= 999)) {
+            bin_append(3, 3, binary_string); // FLG(3)
+            bin_append(2 + (eci / 100), 4, binary_string);
+            bin_append(2 + ((eci % 100) / 10), 4, binary_string);
+            bin_append(2 + (eci % 10), 4, binary_string);
+        }
+        if ((eci >= 1000) && (eci <= 9999)) {
+            bin_append(4, 3, binary_string); // FLG(4)
+            bin_append(2 + (eci / 1000), 4, binary_string);
+            bin_append(2 + ((eci % 1000) / 100), 4, binary_string);
+            bin_append(2 + ((eci % 100) / 10), 4, binary_string);
+            bin_append(2 + (eci % 10), 4, binary_string);
+        }
+        if ((eci >= 10000) && (eci <= 99999)) {
+            bin_append(5, 3, binary_string); // FLG(5)
+            bin_append(2 + (eci / 10000), 4, binary_string);
+            bin_append(2 + ((eci % 10000) / 1000), 4, binary_string);
+            bin_append(2 + ((eci % 1000) / 100), 4, binary_string);
+            bin_append(2 + ((eci % 100) / 10), 4, binary_string);
+            bin_append(2 + (eci % 10), 4, binary_string);
+        }
+        if (eci >= 100000) {
+            bin_append(6, 3, binary_string); // FLG(6)
+            bin_append(2 + (eci / 100000), 4, binary_string);
+            bin_append(2 + ((eci % 100000) / 10000), 4, binary_string);
+            bin_append(2 + ((eci % 10000) / 1000), 4, binary_string);
+            bin_append(2 + ((eci % 1000) / 100), 4, binary_string);
+            bin_append(2 + ((eci % 100) / 10), 4, binary_string);
+            bin_append(2 + (eci % 10), 4, binary_string);
+        }
+    }
+
+    current_mode = 'U';
+    for (i = 0; i < reduced_length; i++) {
+
+        if (reduced_encode_mode[i] != 'B') {
+            byte_mode = 0;
+        }
+
+        if ((reduced_encode_mode[i] != current_mode) && (!byte_mode)) {
+            // Change mode
+            if (current_mode == 'U') {
+                switch (reduced_encode_mode[i]) {
+                    case 'L':
+                        if (!az_bin_append(28, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // L/L
+                        break;
+                    case 'M':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        break;
+                    case 'P':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/L
+                        break;
+                    case 'p':
+                        if (!az_bin_append(0, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/S
+                        break;
+                    case 'D':
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // D/L
+                        break;
+                    case 'B':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // B/S
+                        break;
+                }
+            }
+
+            if (current_mode == 'L') {
+                switch (reduced_encode_mode[i]) {
+                    case 'U':
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // D/L
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        break;
+                    case 'u':
+                        if (!az_bin_append(28, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/S
+                        break;
+                    case 'M':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        break;
+                    case 'P':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/L
+                        break;
+                    case 'p':
+                        if (!az_bin_append(0, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/S
+                        break;
+                    case 'D':
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // D/L
+                        break;
+                    case 'B':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // B/S
+                        break;
+                }
+            }
+
+            if (current_mode == 'M') {
+                switch (reduced_encode_mode[i]) {
+                    case 'U':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        break;
+                    case 'L':
+                        if (!az_bin_append(28, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // L/L
+                        break;
+                    case 'P':
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/L
+                        break;
+                    case 'p':
+                        if (!az_bin_append(0, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/S
+                        break;
+                    case 'D':
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // D/L
+                        break;
+                    case 'B':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // B/S
+                        break;
+                }
+            }
+
+            if (current_mode == 'P') {
+                switch (reduced_encode_mode[i]) {
+                    case 'U':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        break;
+                    case 'L':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(28, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // L/L
+                        break;
+                    case 'M':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        break;
+                    case 'D':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // D/L
+                        break;
+                    case 'B':
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        current_mode = 'U';
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // B/S
+                        break;
+                }
+            }
+
+            if (current_mode == 'D') {
+                switch (reduced_encode_mode[i]) {
+                    case 'U':
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        break;
+                    case 'u':
+                        if (!az_bin_append(15, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/S
+                        break;
+                    case 'L':
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(28, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // L/L
+                        break;
+                    case 'M':
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        break;
+                    case 'P':
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        if (!az_bin_append(29, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // M/L
+                        if (!az_bin_append(30, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // P/L
+                        break;
+                    case 'p':
+                        if (!az_bin_append(0, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // P/S
+                        break;
+                    case 'B':
+                        if (!az_bin_append(14, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // U/L
+                        current_mode = 'U';
+                        if (!az_bin_append(31, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // B/S
+                        break;
+                }
+            }
+
+            // Byte mode length descriptor
+            if ((reduced_encode_mode[i] == 'B') && (!byte_mode)) {
+                for (count = 0; ((i + count) < reduced_length) && (reduced_encode_mode[i + count] == 'B'); count++);
+
+                if (count > 2079) {
+                    return ZINT_ERROR_TOO_LONG;
+                }
+
+                if (count > 31) {
+                    /* Put 00000 followed by 11-bit number of bytes less 31 */
+                    if (!az_bin_append(0, 5, binary_string)) return ZINT_ERROR_TOO_LONG;
+                    if (!az_bin_append(count - 31, 11, binary_string)) return ZINT_ERROR_TOO_LONG;
                 } else {
-                    bin_append(charmap[i], 5, binary_string);
-                    if (!((chartype == PUNC) && (charmap[i] == 0)))
-                        if (debug) printf("%d ", charmap[i]);
+                    /* Put 5-bit number of bytes */
+                    if (!az_bin_append(count, 5, binary_string)) return ZINT_ERROR_TOO_LONG;
                 }
-                break;
-            case DIGIT:
-                bin_append(charmap[i], 4, binary_string);
-                if (debug) printf("%d ", charmap[i]);
-                break;
-            case BINARY:
-                bin_append(charmap[i], 8, binary_string);
-                if (debug) printf("%d ", charmap[i]);
-                break;
+                byte_mode = 1;
+            }
+
+            if ((reduced_encode_mode[i] != 'B') && (reduced_encode_mode[i] != 'u') && (reduced_encode_mode[i] != 'p')) {
+                current_mode = reduced_encode_mode[i];
+            }
         }
 
+        if ((reduced_encode_mode[i] == 'U') || (reduced_encode_mode[i] == 'u')) {
+            if (reduced_source[i] == ' ') {
+                if (!az_bin_append(1, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // SP
+            } else {
+                if (!az_bin_append(AztecSymbolChar[(int) reduced_source[i]], 5, binary_string)) return ZINT_ERROR_TOO_LONG;
+            }
+        }
+
+        if (reduced_encode_mode[i] == 'L') {
+            if (reduced_source[i] == ' ') {
+                if (!az_bin_append(1, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // SP
+            } else {
+                if (!az_bin_append(AztecSymbolChar[(int) reduced_source[i]], 5, binary_string)) return ZINT_ERROR_TOO_LONG;
+            }
+        }
+
+        if (reduced_encode_mode[i] == 'M') {
+            if (reduced_source[i] == ' ') {
+                if (!az_bin_append(1, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // SP
+            } else if (reduced_source[i] == 13) {
+                if (!az_bin_append(14, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // CR
+            } else {
+                if (!az_bin_append(AztecSymbolChar[(int) reduced_source[i]], 5, binary_string)) return ZINT_ERROR_TOO_LONG;
+            }
+        }
+
+        if ((reduced_encode_mode[i] == 'P') || (reduced_encode_mode[i] == 'p')) {
+            if (gs1 && (reduced_source[i] == '[')) {
+                if (!az_bin_append(0, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // FLG(n)
+                if (!az_bin_append(0, 3, binary_string)) return ZINT_ERROR_TOO_LONG; // FLG(0) = FNC1
+            } else if (reduced_source[i] == 13) {
+                if (!az_bin_append(1, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // CR
+            } else if (reduced_source[i] == 'a') {
+                if (!az_bin_append(2, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // CR LF
+            } else if (reduced_source[i] == 'b') {
+                if (!az_bin_append(3, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // . SP
+            } else if (reduced_source[i] == 'c') {
+                if (!az_bin_append(4, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // , SP
+            } else if (reduced_source[i] == 'd') {
+                if (!az_bin_append(5, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // : SP
+            } else if (reduced_source[i] == ',') {
+                if (!az_bin_append(17, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // Comma
+            } else if (reduced_source[i] == '.') {
+                if (!az_bin_append(19, 5, binary_string)) return ZINT_ERROR_TOO_LONG; // Full stop
+            } else {
+                if (!az_bin_append(AztecSymbolChar[(int) reduced_source[i]], 5, binary_string)) return ZINT_ERROR_TOO_LONG;
+            }
+        }
+
+        if (reduced_encode_mode[i] == 'D') {
+            if (reduced_source[i] == ' ') {
+                if (!az_bin_append(1, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // SP
+            } else if (reduced_source[i] == ',') {
+                if (!az_bin_append(12, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // Comma
+            } else if (reduced_source[i] == '.') {
+                if (!az_bin_append(13, 4, binary_string)) return ZINT_ERROR_TOO_LONG; // Full stop
+            } else {
+                if (!az_bin_append(AztecSymbolChar[(int) reduced_source[i]], 4, binary_string)) return ZINT_ERROR_TOO_LONG;
+            }
+        }
+
+        if (reduced_encode_mode[i] == 'B') {
+            if (!az_bin_append(reduced_source[i], 8, binary_string)) return ZINT_ERROR_TOO_LONG;
+        }
     }
 
-    if (debug) printf("\n");
-
-    if (strlen(binary_string) > 14970) {
-        return ZINT_ERROR_TOO_LONG;
+    if (debug) {
+        printf("Binary String:\n");
+        printf("%s\n", binary_string);
     }
 
     return 0;
@@ -695,7 +859,7 @@ static int avoidReferenceGrid(int output) {
 
 /* Calculate the position of the bits in the grid */
 static void populate_map() {
-    int layer, start, length, n, i;
+    int layer, n, i;
     int x, y;
 
     for (x = 0; x < 151; x++) {
@@ -705,15 +869,15 @@ static void populate_map() {
     }
 
     for (layer = 1; layer < 33; layer++) {
-        start = (112 * (layer - 1)) + (16 * (layer - 1) * (layer - 1)) + 2;
-        length = 28 + ((layer - 1) * 4) + (layer * 4);
+        const int start = (112 * (layer - 1)) + (16 * (layer - 1) * (layer - 1)) + 2;
+        const int length = 28 + ((layer - 1) * 4) + (layer * 4);
         /* Top */
         i = 0;
         x = 64 - ((layer - 1) * 2);
         y = 63 - ((layer - 1) * 2);
         for (n = start; n < (start + length); n += 2) {
-            AztecMap[(avoidReferenceGrid(x + i) * 151) + avoidReferenceGrid(y)] = n;
-            AztecMap[(avoidReferenceGrid(x + i) * 151) + avoidReferenceGrid(y - 1)] = n + 1;
+            AztecMap[(avoidReferenceGrid(y) * 151) + avoidReferenceGrid(x + i)] = n;
+            AztecMap[(avoidReferenceGrid(y - 1) * 151) + avoidReferenceGrid(x + i)] = n + 1;
             i++;
         }
         /* Right */
@@ -721,8 +885,8 @@ static void populate_map() {
         x = 78 + ((layer - 1) * 2);
         y = 64 - ((layer - 1) * 2);
         for (n = start + length; n < (start + (length * 2)); n += 2) {
-            AztecMap[(avoidReferenceGrid(x) * 151) + avoidReferenceGrid(y + i)] = n;
-            AztecMap[(avoidReferenceGrid(x + 1) * 151) + avoidReferenceGrid(y + i)] = n + 1;
+            AztecMap[(avoidReferenceGrid(y + i) * 151) + avoidReferenceGrid(x)] = n;
+            AztecMap[(avoidReferenceGrid(y + i) * 151) + avoidReferenceGrid(x + 1)] = n + 1;
             i++;
         }
         /* Bottom */
@@ -730,8 +894,8 @@ static void populate_map() {
         x = 77 + ((layer - 1) * 2);
         y = 78 + ((layer - 1) * 2);
         for (n = start + (length * 2); n < (start + (length * 3)); n += 2) {
-            AztecMap[(avoidReferenceGrid(x - i) * 151) + avoidReferenceGrid(y)] = n;
-            AztecMap[(avoidReferenceGrid(x - i) * 151) + avoidReferenceGrid(y + 1)] = n + 1;
+            AztecMap[(avoidReferenceGrid(y) * 151) + avoidReferenceGrid(x - i)] = n;
+            AztecMap[(avoidReferenceGrid(y + 1) * 151) + avoidReferenceGrid(x - i)] = n + 1;
             i++;
         }
         /* Left */
@@ -739,8 +903,8 @@ static void populate_map() {
         x = 63 - ((layer - 1) * 2);
         y = 77 + ((layer - 1) * 2);
         for (n = start + (length * 3); n < (start + (length * 4)); n += 2) {
-            AztecMap[(avoidReferenceGrid(x) * 151) + avoidReferenceGrid(y - i)] = n;
-            AztecMap[(avoidReferenceGrid(x - 1) * 151) + avoidReferenceGrid(y - i)] = n + 1;
+            AztecMap[(avoidReferenceGrid(y - i) * 151) + avoidReferenceGrid(x)] = n;
+            AztecMap[(avoidReferenceGrid(y - i) * 151) + avoidReferenceGrid(x - 1)] = n + 1;
             i++;
         }
     }
@@ -788,38 +952,38 @@ static void populate_map() {
     /* Descriptor */
     for (i = 0; i < 10; i++) {
         /* Top */
-        AztecMap[(avoidReferenceGrid(66 + i) * 151) + avoidReferenceGrid(64)] = 20000 + i;
+        AztecMap[(avoidReferenceGrid(64) * 151) + avoidReferenceGrid(66 + i)] = 20000 + i;
     }
     for (i = 0; i < 10; i++) {
         /* Right */
-        AztecMap[(avoidReferenceGrid(77) * 151) + avoidReferenceGrid(66 + i)] = 20010 + i;
+        AztecMap[(avoidReferenceGrid(66 + i) * 151) + avoidReferenceGrid(77)] = 20010 + i;
     }
     for (i = 0; i < 10; i++) {
         /* Bottom */
-        AztecMap[(avoidReferenceGrid(75 - i) * 151) + avoidReferenceGrid(77)] = 20020 + i;
+        AztecMap[(avoidReferenceGrid(77) * 151) + avoidReferenceGrid(75 - i)] = 20020 + i;
     }
     for (i = 0; i < 10; i++) {
         /* Left */
-        AztecMap[(avoidReferenceGrid(64) * 151) + avoidReferenceGrid(75 - i)] = 20030 + i;
+        AztecMap[(avoidReferenceGrid(75 - i) * 151) + avoidReferenceGrid(64)] = 20030 + i;
     }
 
     /* Orientation */
     AztecMap[(avoidReferenceGrid(64) * 151) + avoidReferenceGrid(64)] = 1;
     AztecMap[(avoidReferenceGrid(65) * 151) + avoidReferenceGrid(64)] = 1;
     AztecMap[(avoidReferenceGrid(64) * 151) + avoidReferenceGrid(65)] = 1;
-    AztecMap[(avoidReferenceGrid(77) * 151) + avoidReferenceGrid(64)] = 1;
-    AztecMap[(avoidReferenceGrid(77) * 151) + avoidReferenceGrid(65)] = 1;
-    AztecMap[(avoidReferenceGrid(77) * 151) + avoidReferenceGrid(76)] = 1;
+    AztecMap[(avoidReferenceGrid(64) * 151) + avoidReferenceGrid(77)] = 1;
+    AztecMap[(avoidReferenceGrid(65) * 151) + avoidReferenceGrid(77)] = 1;
+    AztecMap[(avoidReferenceGrid(76) * 151) + avoidReferenceGrid(77)] = 1;
 }
 
-int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
+INTERNAL int aztec(struct zint_symbol *symbol, unsigned char source[], const size_t length) {
     int x, y, i, j, p, data_blocks, ecc_blocks, layers, total_bits;
-    char binary_string[20000], bit_pattern[20045], descriptor[42];
-    char adjusted_string[20000];
+    char binary_string[AZTEC_BIN_CAPACITY + 1], bit_pattern[20045], descriptor[42];
+    char adjusted_string[AZTEC_MAX_CAPACITY + 1];
     unsigned char desc_data[4], desc_ecc[6];
     int err_code, ecc_level, compact, data_length, data_maxsize, codeword_size, adjusted_length;
     int remainder, padbits, count, gs1, adjustment_size;
-    int debug = symbol->debug, reader = 0;
+    int debug = (symbol->debug & ZINT_DEBUG_PRINT), reader = 0;
     int comp_loop = 4;
 
 #ifdef _MSC_VER
@@ -827,10 +991,10 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
     unsigned int* ecc_part;
 #endif
 
-    memset(binary_string, 0, 20000);
-    memset(adjusted_string, 0, 20000);
+    memset(binary_string, 0, AZTEC_BIN_CAPACITY + 1);
+    memset(adjusted_string, 0, AZTEC_MAX_CAPACITY + 1);
 
-    if (symbol->input_mode == GS1_MODE) {
+    if ((symbol->input_mode & 0x07) == GS1_MODE) {
         gs1 = 1;
     } else {
         gs1 = 0;
@@ -840,7 +1004,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
         comp_loop = 1;
     }
     if (gs1 && reader) {
-        strcpy(symbol->errtxt, "Cannot encode in GS1 and Reader Initialisation mode at the same time (E01)");
+        strcpy(symbol->errtxt, "501: Cannot encode in GS1 and Reader Initialisation mode at the same time");
         return ZINT_ERROR_INVALID_OPTION;
     }
 
@@ -849,12 +1013,12 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
     err_code = aztec_text_process(source, length, binary_string, gs1, symbol->eci, symbol->debug);
 
     if (err_code != 0) {
-        strcpy(symbol->errtxt, "Input too long or too many extended ASCII characters (E02)");
+        strcpy(symbol->errtxt, "502: Input too long or too many extended ASCII characters");
         return err_code;
     }
 
     if (!((symbol->option_1 >= -1) && (symbol->option_1 <= 4))) {
-        strcpy(symbol->errtxt, "Invalid error correction level - using default instead (E03)");
+        strcpy(symbol->errtxt, "503: Invalid error correction level - using default instead");
         err_code = ZINT_WARN_INVALID_OPTION;
         symbol->option_1 = -1;
     }
@@ -942,7 +1106,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
             }
 
             if (layers == 0) { /* Couldn't find a symbol which fits the data */
-                strcpy(symbol->errtxt, "Input too long (too many bits for selected ECC) (E04)");
+                strcpy(symbol->errtxt, "504: Input too long (too many bits for selected ECC)");
                 return ZINT_ERROR_TOO_LONG;
             }
 
@@ -1020,6 +1184,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
                 adjusted_string[adjusted_length - 1] = '0';
             }
 
+/*
             if (debug) {
                 printf("Codewords:\n");
                 for (i = 0; i < (adjusted_length / codeword_size); i++) {
@@ -1029,6 +1194,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
                     printf("\n");
                 }
             }
+*/
 
         } while (adjusted_length > data_maxsize);
         /* This loop will only repeat on the rare occasions when the rule about not having all 1s or all 0s
@@ -1048,7 +1214,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
             layers = symbol->option_2 - 4;
         }
         if ((symbol->option_2 < 0) || (symbol->option_2 > 36)) {
-            strcpy(symbol->errtxt, "Invalid Aztec Code size");
+            strcpy(symbol->errtxt, "510: Invalid Aztec Code size");
             return ZINT_ERROR_INVALID_OPTION;
         }
 
@@ -1134,7 +1300,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
         }
 
         if (adjusted_length > data_maxsize) {
-            strcpy(symbol->errtxt, "Data too long for specified Aztec Code symbol size (E05)");
+            strcpy(symbol->errtxt, "505: Data too long for specified Aztec Code symbol size");
             return ZINT_ERROR_TOO_LONG;
         }
 
@@ -1151,7 +1317,7 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
     }
 
     if (reader && (layers > 22)) {
-        strcpy(symbol->errtxt, "Data too long for reader initialisation symbol (E06)");
+        strcpy(symbol->errtxt, "506: Data too long for reader initialisation symbol");
         return ZINT_ERROR_TOO_LONG;
     }
 
@@ -1191,97 +1357,36 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
     memset(data_part, 0, (data_blocks + 2) * sizeof (int));
     memset(ecc_part, 0, (ecc_blocks + 2) * sizeof (int));
 
-    /* Split into codewords and calculate reed-colomon error correction codes */
+    /* Split into codewords and calculate reed-solomon error correction codes */
+    for (i = 0; i < data_blocks; i++) {
+        for (p = 0; p < codeword_size; p++) {
+            if (adjusted_string[i * codeword_size + p] == '1') {
+                data_part[i] += 0x01 << (codeword_size - (p + 1));
+            }
+        }
+    }
+
     switch (codeword_size) {
         case 6:
-            for (i = 0; i < data_blocks; i++) {
-                for (p = 0; p < 6; p++) {
-                    if (adjusted_string[i * codeword_size + p] == '1') {
-                        data_part[i] += (0x20 >> p);
-                    }
-                }
-            }
             rs_init_gf(0x43);
-            rs_init_code(ecc_blocks, 1);
-            rs_encode_long(data_blocks, data_part, ecc_part);
-            for (i = (ecc_blocks - 1); i >= 0; i--) {
-                for (p = 0; p < 6; p++) {
-                    if (ecc_part[i] & (0x20 >> p)) {
-                        strcat(adjusted_string, "1");
-                    } else {
-                        strcat(adjusted_string, "0");
-                    }
-                }
-            }
-            rs_free();
             break;
         case 8:
-            for (i = 0; i < data_blocks; i++) {
-                for (p = 0; p < 8; p++) {
-                    if (adjusted_string[i * codeword_size + p] == '1') {
-                        data_part[i] += (0x80 >> p);
-                    }
-                }
-            }
             rs_init_gf(0x12d);
-            rs_init_code(ecc_blocks, 1);
-            rs_encode_long(data_blocks, data_part, ecc_part);
-            for (i = (ecc_blocks - 1); i >= 0; i--) {
-                for (p = 0; p < 8; p++) {
-                    if (ecc_part[i] & (0x80 >> p)) {
-                        strcat(adjusted_string, "1");
-                    } else {
-                        strcat(adjusted_string, "0");
-                    }
-                }
-            }
-            rs_free();
             break;
         case 10:
-            for (i = 0; i < data_blocks; i++) {
-                for (p = 0; p < 10; p++) {
-                    if (adjusted_string[i * codeword_size + p] == '1') {
-                        data_part[i] += (0x200 >> p);
-                    }
-                }
-            }
             rs_init_gf(0x409);
-            rs_init_code(ecc_blocks, 1);
-            rs_encode_long(data_blocks, data_part, ecc_part);
-            for (i = (ecc_blocks - 1); i >= 0; i--) {
-                for (p = 0; p < 10; p++) {
-                    if (ecc_part[i] & (0x200 >> p)) {
-                        strcat(adjusted_string, "1");
-                    } else {
-                        strcat(adjusted_string, "0");
-                    }
-                }
-            }
-            rs_free();
             break;
         case 12:
-            for (i = 0; i < data_blocks; i++) {
-                for (p = 0; p < 12; p++) {
-                    if (adjusted_string[i * codeword_size + p] == '1') {
-                        data_part[i] += (0x800 >> p);
-                    }
-                }
-            }
             rs_init_gf(0x1069);
-            rs_init_code(ecc_blocks, 1);
-            rs_encode_long(data_blocks, data_part, ecc_part);
-            for (i = (ecc_blocks - 1); i >= 0; i--) {
-                for (p = 0; p < 12; p++) {
-                    if (ecc_part[i] & (0x800 >> p)) {
-                        strcat(adjusted_string, "1");
-                    } else {
-                        strcat(adjusted_string, "0");
-                    }
-                }
-            }
-            rs_free();
             break;
     }
+
+    rs_init_code(ecc_blocks, 1);
+    rs_encode_long(data_blocks, data_part, ecc_part);
+    for (i = (ecc_blocks - 1); i >= 0; i--) {
+        bin_append(ecc_part[i], codeword_size, adjusted_string);
+    }
+    rs_free();
 
     /* Invert the data so that actual data is on the outside and reed-solomon on the inside */
     memset(bit_pattern, '0', 20045);
@@ -1483,20 +1588,20 @@ int aztec(struct zint_symbol *symbol, unsigned char source[], int length) {
 }
 
 /* Encodes Aztec runes as specified in ISO/IEC 24778:2008 Annex A */
-int aztec_runes(struct zint_symbol *symbol, unsigned char source[], int length) {
-    int input_value, error_number, i, p, y, x;
+INTERNAL int aztec_runes(struct zint_symbol *symbol, unsigned char source[], int length) {
+    int input_value, error_number, i, y, x;
     char binary_string[28];
     unsigned char data_codewords[3], ecc_codewords[6];
 
     error_number = 0;
     input_value = 0;
     if (length > 3) {
-        strcpy(symbol->errtxt, "Input too large (E07)");
+        strcpy(symbol->errtxt, "507: Input too large");
         return ZINT_ERROR_INVALID_DATA;
     }
     error_number = is_sane(NEON, source, length);
     if (error_number != 0) {
-        strcpy(symbol->errtxt, "Invalid characters in input (E08)");
+        strcpy(symbol->errtxt, "508: Invalid characters in input");
         return ZINT_ERROR_INVALID_DATA;
     }
     switch (length) {
@@ -1512,18 +1617,12 @@ int aztec_runes(struct zint_symbol *symbol, unsigned char source[], int length) 
     }
 
     if (input_value > 255) {
-        strcpy(symbol->errtxt, "Input too large (E09)");
+        strcpy(symbol->errtxt, "509: Input too large");
         return ZINT_ERROR_INVALID_DATA;
     }
 
     strcpy(binary_string, "");
-    for (p = 0; p < 8; p++) {
-        if (input_value & (0x80 >> p)) {
-            strcat(binary_string, "1");
-        } else {
-            strcat(binary_string, "0");
-        }
-    }
+    bin_append(input_value, 8, binary_string);
 
     data_codewords[0] = 0;
     data_codewords[1] = 0;

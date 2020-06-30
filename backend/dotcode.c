@@ -2,20 +2,20 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2017-2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,17 +26,18 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
-    SUCH DAMAGE.    
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+    SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
-/* 
+/*
  * Attempts to encode DotCode according to AIMD013 Rev 1.34a, dated Feb 19, 2009
+ * Incorporating suggestions from Terry Burton at BWIPP
  */
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <math.h>
 #ifndef _MSC_VER
 #include <stdint.h>
@@ -49,9 +50,10 @@
 
 #define GF 113
 #define PM 3
+#define SCORE_UNLIT_EDGE    -99999
 
 /* DotCode symbol character dot patterns, from Annex C */
-static const int dot_patterns[113] = {
+static const unsigned short int dot_patterns[113] = {
     0x155, 0x0ab, 0x0ad, 0x0b5, 0x0d5, 0x156, 0x15a, 0x16a, 0x1aa, 0x0ae,
     0x0b6, 0x0ba, 0x0d6, 0x0da, 0x0ea, 0x12b, 0x12d, 0x135, 0x14b, 0x14d,
     0x153, 0x159, 0x165, 0x169, 0x195, 0x1a5, 0x1a9, 0x057, 0x05b, 0x05d,
@@ -66,7 +68,7 @@ static const int dot_patterns[113] = {
     0x1b8, 0x1c6, 0x1cc
 };
 
-int get_dot(char Dots[], int Hgt, int Wid, int x, int y) {
+static int get_dot(char Dots[], const int Hgt, const int Wid, const int x, const int y) {
     int retval = 0;
 
     if ((x >= 0) && (x < Wid) && (y >= 0) && (y < Hgt)) {
@@ -78,30 +80,30 @@ int get_dot(char Dots[], int Hgt, int Wid, int x, int y) {
     return retval;
 }
 
-int clr_col(char *Dots, int Hgt, int Wid, int x) {
+static int clr_col(char *Dots, const int Hgt, const int Wid, const int x) {
     int y;
     for (y = x & 1; y < Hgt; y += 2) {
         if (get_dot(Dots, Hgt, Wid, x, y)) {
             return 0;
         }
     }
-    
+
     return 1;
 }
 
-int clr_row(char *Dots, int Hgt, int Wid, int y) {
+static int clr_row(char *Dots, const int Hgt, const int Wid, const int y) {
     int x;
     for (x = y & 1; x < Wid; x += 2) {
         if (get_dot(Dots, Hgt, Wid, x, y)) {
             return 0;
         }
     }
-    
+
     return 1;
 }
 
 /* Dot pattern scoring routine from Annex A */
-int score_array(char Dots[], int Hgt, int Wid) {
+static int score_array(char Dots[], int Hgt, int Wid) {
     int x, y, worstedge, first, last, sum;
     int penalty_local = 0;
     int penalty = 0;
@@ -148,7 +150,7 @@ int score_array(char Dots[], int Hgt, int Wid) {
             }
         }
     }
-    
+
     sum = 0;
     first = -1;
     last = -1;
@@ -164,6 +166,10 @@ int score_array(char Dots[], int Hgt, int Wid) {
         }
     worstedge = sum + last - first;
     worstedge *= Hgt;
+
+    if (sum == 0) {
+        return SCORE_UNLIT_EDGE;      // guard against empty top edge
+    }
 
     sum = 0;
     first = -1;
@@ -182,6 +188,10 @@ int score_array(char Dots[], int Hgt, int Wid) {
     sum *= Hgt;
     if (sum < worstedge) {
         worstedge = sum;
+    }
+
+    if (sum == 0) {
+        return SCORE_UNLIT_EDGE;      // guard against empty bottom edge
     }
 
     sum = 0;
@@ -203,6 +213,10 @@ int score_array(char Dots[], int Hgt, int Wid) {
         worstedge = sum;
     }
 
+    if (sum == 0) {
+        return SCORE_UNLIT_EDGE;      // guard against empty left edge
+    }
+
     sum = 0;
     first = -1;
     last = -1;
@@ -220,6 +234,10 @@ int score_array(char Dots[], int Hgt, int Wid) {
     sum *= Wid;
     if (sum < worstedge) {
         worstedge = sum;
+    }
+
+    if (sum == 0) {
+        return SCORE_UNLIT_EDGE;      // guard against empty right edge
     }
 
     // throughout the array, count the # of unprinted 5-somes (cross patterns)
@@ -249,7 +267,7 @@ int score_array(char Dots[], int Hgt, int Wid) {
 // employing Galois Field GF, where GF is prime, with a prime modulus of PM
 //-------------------------------------------------------------------------
 
-void rsencode(int nd, int nc, unsigned char *wd) {
+static void rsencode(int nd, int nc, unsigned char *wd) {
     int i, j, k, nw, start, step, root[GF], c[GF];
 
     // Start by generating "nc" roots (antilogs):
@@ -293,7 +311,7 @@ void rsencode(int nd, int nc, unsigned char *wd) {
 }
 
 /* Check if the next character is directly encodable in code set A (Annex F.II.D) */
-int datum_a(const unsigned char source[], int position, int length) {
+static int datum_a(const unsigned char source[], int position, int length) {
     int retval = 0;
 
     if (position < length) {
@@ -306,7 +324,7 @@ int datum_a(const unsigned char source[], int position, int length) {
 }
 
 /* Check if the next character is directly encodable in code set B (Annex F.II.D) */
-int datum_b(const unsigned char source[], int position, int length) {
+static int datum_b(const unsigned char source[], int position, int length) {
     int retval = 0;
 
     if (position < length) {
@@ -333,7 +351,7 @@ int datum_b(const unsigned char source[], int position, int length) {
 }
 
 /* Check if the next characters are directly encodable in code set C (Annex F.II.D) */
-int datum_c(const unsigned char source[], int position, int length) {
+static int datum_c(const unsigned char source[], int position, int length) {
     int retval = 0;
 
     if (position <= length - 2) {
@@ -346,7 +364,7 @@ int datum_c(const unsigned char source[], int position, int length) {
 }
 
 /* Returns how many consecutive digits lie immediately ahead (Annex F.II.A) */
-int n_digits(const unsigned char source[], int position, int length) {
+static int n_digits(const unsigned char source[], int position, int length) {
     int i;
 
     for (i = position; ((source[i] >= '0') && (source[i] <= '9')) && (i < length); i++);
@@ -355,7 +373,7 @@ int n_digits(const unsigned char source[], int position, int length) {
 }
 
 /* checks ahead for 10 or more digits starting "17xxxxxx10..." (Annex F.II.B) */
-int seventeen_ten(const unsigned char source[], int position, int length) {
+static int seventeen_ten(const unsigned char source[], int position, int length) {
     int found = 0;
 
     if (n_digits(source, position, length) >= 10) {
@@ -371,7 +389,7 @@ int seventeen_ten(const unsigned char source[], int position, int length) {
 /*  checks how many characters ahead can be reached while datum_c is true,
  *  returning the resulting number of codewords (Annex F.II.E)
  */
-int ahead_c(const unsigned char source[], int position, int length) {
+static int ahead_c(const unsigned char source[], int position, int length) {
     int count = 0;
     int i;
 
@@ -383,7 +401,7 @@ int ahead_c(const unsigned char source[], int position, int length) {
 }
 
 /* Annex F.II.F */
-int try_c(const unsigned char source[], int position, int length) {
+static int try_c(const unsigned char source[], int position, int length) {
     int retval = 0;
 
     if (n_digits(source, position, length) > 0) {
@@ -396,7 +414,7 @@ int try_c(const unsigned char source[], int position, int length) {
 }
 
 /* Annex F.II.G */
-int ahead_a(const unsigned char source[], int position, int length) {
+static int ahead_a(const unsigned char source[], int position, int length) {
     int count = 0;
     int i;
 
@@ -409,7 +427,7 @@ int ahead_a(const unsigned char source[], int position, int length) {
 }
 
 /* Annex F.II.H */
-int ahead_b(const unsigned char source[], int position, int length) {
+static int ahead_b(const unsigned char source[], int position, int length) {
     int count = 0;
     int i;
 
@@ -422,10 +440,10 @@ int ahead_b(const unsigned char source[], int position, int length) {
 }
 
 /* checks if the next character is in the range 128 to 255  (Annex F.II.I) */
-int binary(const unsigned char source[], int position) {
+static int binary(const unsigned char source[], int length, int position) {
     int retval = 0;
 
-    if (source[position] >= 128) {
+    if (position < length && source[position] >= 128) {
         retval = 1;
     }
 
@@ -433,11 +451,11 @@ int binary(const unsigned char source[], int position) {
 }
 
 /* Analyse input data stream and encode using algorithm from Annex F */
-int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char source[], int length, unsigned char *codeword_array, int *binary_finish) {
+static int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char source[], int length, unsigned char *codeword_array, int *binary_finish) {
     int input_position, array_length, i;
     char encoding_mode;
-    int inside_macro, done;
-    int debug = symbol->debug;
+    int inside_macro;
+    int debug = (symbol->debug & ZINT_DEBUG_PRINT);
     int binary_buffer_size = 0;
     int lawrencium[6]; // Reversed radix 103 values
 
@@ -457,7 +475,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         array_length++;
     }
 
-    if (symbol->input_mode != GS1_MODE) {
+    if ((symbol->input_mode & 0x07) != GS1_MODE) {
         if (length > 2) {
             if (((source[input_position] >= '0') && (source[input_position] <= '9')) &&
                     ((source[input_position + 1] >= '0') && (source[input_position + 1] <= '9'))) {
@@ -467,7 +485,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         }
     }
 
-    if (symbol->eci > 3) {
+    if (symbol->eci > 0) {
         codeword_array[array_length] = 108; // FNC2
         array_length++;
         if (symbol->eci <= 39) {
@@ -477,10 +495,10 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
             // the next three codewords valued A, B & C encode the ECI value of
             // (A - 40) * 12769 + B * 113 + C + 40 (Section 5.2.1)
             int a, b, c;
-            a = (symbol->eci - 40) % 12769;
-            b = ((symbol->eci - 40) - (12769 * a)) % 113;
+            a = (symbol->eci - 40) / 12769;
+            b = ((symbol->eci - 40) - (12769 * a)) / 113;
             c = (symbol->eci - 40) - (12769 * a) - (113 * b);
-            
+
             codeword_array[array_length] = a + 40;
             array_length++;
             codeword_array[array_length] = b;
@@ -498,7 +516,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         array_length++;
         encoding_mode = 'A';
     }
-    
+
     if (source[input_position] == 28) {
         codeword_array[array_length] = 101; // Latch A
         array_length++;
@@ -506,7 +524,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         array_length++;
         encoding_mode = 'A';
     }
-    
+
     if (source[input_position] == 29) {
         codeword_array[array_length] = 101; // Latch A
         array_length++;
@@ -514,7 +532,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         array_length++;
         encoding_mode = 'A';
     }
-    
+
     if (source[input_position] == 30) {
         codeword_array[array_length] = 101; // Latch A
         array_length++;
@@ -522,9 +540,9 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         array_length++;
         encoding_mode = 'A';
     }
-    
+
     do {
-        done = 0;
+        int done = 0;
         /* Step A */
         if ((input_position == length - 2) && (inside_macro != 0) && (inside_macro != 100)) {
             // inside_macro only gets set to 97, 98 or 99 if the last two characters are RS/EOT
@@ -535,16 +553,17 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
             }
         }
 
+        /* Step B */
         if ((input_position == length - 1) && (inside_macro == 100)) {
             // inside_macro only gets set to 100 if the last character is EOT
             input_position++;
             done = 1;
             if (debug) {
-                printf("A ");
+                printf("B ");
             }
         }
 
-        /* Step B1 */
+        /* Step C1 */
         if ((!done) && (encoding_mode == 'C')) {
             if ((array_length == 0) && (length > 9)) {
                 if ((source[input_position] == '[')
@@ -564,7 +583,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                             inside_macro = 97;
                             done = 1;
                             if (debug) {
-                                printf("B1/1 ");
+                                printf("C1/1 ");
                             }
                         }
 
@@ -577,7 +596,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                             inside_macro = 98;
                             done = 1;
                             if (debug) {
-                                printf("B1/2 ");
+                                printf("C1/2 ");
                             }
                         }
 
@@ -590,7 +609,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                             inside_macro = 99;
                             done = 1;
                             if (debug) {
-                                printf("B1/3 ");
+                                printf("C1/3 ");
                             }
                         }
                     }
@@ -605,14 +624,14 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                         inside_macro = 100;
                         done = 1;
                         if (debug) {
-                            printf("B1/4 ");
+                            printf("C1/4 ");
                         }
                     }
                 }
             }
         }
 
-        /* Step B2 */
+        /* Step C2 */
         if ((!done) && (encoding_mode == 'C')) {
             if (seventeen_ten(source, input_position, length)) {
                 codeword_array[array_length] = 100; // (17)...(10)
@@ -626,13 +645,13 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                 input_position += 10;
                 done = 1;
                 if (debug) {
-                    printf("B2/1 ");
+                    printf("C2/1 ");
                 }
             }
         }
 
         if ((!done) && (encoding_mode == 'C')) {
-            if (datum_c(source, input_position, length) || ((source[input_position] == '[') && (symbol->input_mode == GS1_MODE))) {
+            if (datum_c(source, input_position, length) || ((source[input_position] == '[') && ((symbol->input_mode & 0x07) == GS1_MODE))) {
                 if (source[input_position] == '[') {
                     codeword_array[array_length] = 107; // FNC1
                     input_position++;
@@ -643,151 +662,15 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                 array_length++;
                 done = 1;
                 if (debug) {
-                    printf("B2/2 ");
-                }
-            }
-        }
-
-        /* Setp B3 */
-        if ((!done) && (encoding_mode == 'C')) {
-            if (binary(source, input_position)) {
-                if (n_digits(source, input_position + 1, length) > 0) {
-                    if ((source[input_position] - 128) < 32) {
-                        codeword_array[array_length] = 110; // Bin Shift A
-                        array_length++;
-                        codeword_array[array_length] = source[input_position] - 128 + 64;
-                        array_length++;
-                    } else {
-                        codeword_array[array_length] = 111; // Bin Shift B
-                        array_length++;
-                        codeword_array[array_length] = source[input_position] - 128 - 32;
-                        array_length++;
-                    }
-                    input_position++;
-                } else {
-                    codeword_array[array_length] = 112; // Bin Latch
-                    array_length++;
-                    encoding_mode = 'X';
-                }
-                done = 1;
-                if (debug) {
-                    printf("B3 ");
-                }
-            }
-        }
-
-        /* Step B4 */
-        if ((!done) && (encoding_mode == 'C')) {
-            int m = ahead_a(source, input_position, length);
-            int n = ahead_b(source, input_position, length);
-            if (m > n) {
-                codeword_array[array_length] = 101; // Latch A
-                array_length++;
-                encoding_mode = 'A';
-            } else {
-                if (n <= 4) {
-                    codeword_array[array_length] = 101 + n; // nx Shift B
-                    array_length++;
-
-                    for (i = 0; i < n; i++) {
-                        codeword_array[array_length] = source[input_position] - 32;
-                        array_length++;
-                        input_position++;
-                    }
-                } else {
-                    codeword_array[array_length] = 106; // Latch B
-                    array_length++;
-                    encoding_mode = 'B';
-                }
-            }
-            done = 1;
-            if (debug) {
-                printf("B4 ");
-            }
-        }
-
-        /* Step C1 */
-        if ((!done) && (encoding_mode == 'B')) {
-            int n = try_c(source, input_position, length);
-
-            if (n >= 2) {
-                if (n <= 4) {
-                    codeword_array[array_length] = 103 + (n - 2); // nx Shift C
-                    array_length++;
-                    for (i = 0; i < n; i++) {
-                        codeword_array[array_length] = ((source[input_position] - '0') * 10) + (source[input_position + 1] - '0');
-                        array_length++;
-                        input_position += 2;
-                    }
-                } else {
-                    codeword_array[array_length] = 106; // Latch C
-                    array_length++;
-                    encoding_mode = 'C';
-                }
-                done = 1;
-                if (debug) {
-                    printf("C1 ");
-                }
-            }
-        }
-
-        /* Step C2 */
-        if ((!done) && (encoding_mode == 'B')) {
-            if ((source[input_position] == '[') && (symbol->input_mode == GS1_MODE)) {
-                codeword_array[array_length] = 107; // FNC1
-                array_length++;
-                input_position++;
-                done = 1;
-                if (debug) {
-                    printf("C2/1 ");
-                }
-            } else {
-                if (datum_b(source, input_position, length)) {
-                    
-                    if ((source[input_position] >= 32) && (source[input_position] <= 127)) {
-                        codeword_array[array_length] = source[input_position] - 32;
-                        done = 1;
-                        
-                    } else if (source[input_position] == 13) {
-                        /* CR/LF */
-                        codeword_array[array_length] = 96;
-                        input_position++;
-                        done = 1;
-                        
-                    } else if (input_position != 0) {
-                        /* HT, FS, GS and RS in the first data position would be interpreted as a macro (see table 2) */
-                        switch(source[input_position]) {
-                            case 9: // HT
-                                codeword_array[array_length] = 97;
-                                break;
-                            case 28: // FS
-                                codeword_array[array_length] = 98;
-                                break;
-                            case 29: // GS
-                                codeword_array[array_length] = 99;
-                                break;
-                            case 30: // RS
-                                codeword_array[array_length] = 100;
-                                break;
-                        }
-                        done = 1;
-                    }
-                    
-                    if (done == 1) {
-                        array_length++;
-                        input_position++;
-                        if (debug) {
-                            printf("C2/2 ");
-                        }
-                    }
+                    printf("C2/2 ");
                 }
             }
         }
 
         /* Step C3 */
-        if ((!done) && (encoding_mode == 'B')) {
-            if (binary(source, input_position)) {
-                if (datum_b(source, input_position + 1, length)) {
+        if ((!done) && (encoding_mode == 'C')) {
+            if (binary(source, length, input_position)) {
+                if (n_digits(source, input_position + 1, length) > 0) {
                     if ((source[input_position] - 128) < 32) {
                         codeword_array[array_length] = 110; // Bin Shift A
                         array_length++;
@@ -813,21 +696,37 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         }
 
         /* Step C4 */
-        if ((!done) && (encoding_mode == 'B')) {
-            if (ahead_a(source, input_position, length) == 1) {
-                codeword_array[array_length] = 101; // Shift A
-                array_length++;
-                if (source[input_position] < 32) {
-                    codeword_array[array_length] = source[input_position] + 64;
-                } else {
-                    codeword_array[array_length] = source[input_position] - 32;
-                }
-                array_length++;
-                input_position++;
-            } else {
-                codeword_array[array_length] = 102; // Latch A
+        if ((!done) && (encoding_mode == 'C')) {
+            int m = ahead_a(source, input_position, length);
+            int n = ahead_b(source, input_position, length);
+            if (m > n) {
+                codeword_array[array_length] = 101; // Latch A
                 array_length++;
                 encoding_mode = 'A';
+            } else {
+                if (n <= 4) {
+                    codeword_array[array_length] = 101 + n; // nx Shift B
+                    array_length++;
+
+                    for (i = 0; i < n; i++) {
+                        if (source[input_position] >= 32) {
+                            codeword_array[array_length] = source[input_position] - 32;
+                        } else {
+                            switch(source[input_position]) {
+                                case 9: codeword_array[array_length] = 97; break; // HT
+                                case 28: codeword_array[array_length] = 98; break; // FS
+                                case 29: codeword_array[array_length] = 99; break; // GS
+                                case 30: codeword_array[array_length] = 100; break; // RS
+                            }
+                        }
+                        array_length++;
+                        input_position++;
+                    }
+                } else {
+                    codeword_array[array_length] = 106; // Latch B
+                    array_length++;
+                    encoding_mode = 'B';
+                }
             }
             done = 1;
             if (debug) {
@@ -836,8 +735,9 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         }
 
         /* Step D1 */
-        if ((!done) && (encoding_mode == 'A')) {
+        if ((!done) && (encoding_mode == 'B')) {
             int n = try_c(source, input_position, length);
+
             if (n >= 2) {
                 if (n <= 4) {
                     codeword_array[array_length] = 103 + (n - 2); // nx Shift C
@@ -860,8 +760,8 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         }
 
         /* Step D2 */
-        if ((!done) && (encoding_mode == 'A')) {
-            if ((source[input_position] == '[') && (symbol->input_mode == GS1_MODE)) {
+        if ((!done) && (encoding_mode == 'B')) {
+            if ((source[input_position] == '[') && ((symbol->input_mode & 0x07) == GS1_MODE)) {
                 codeword_array[array_length] = 107; // FNC1
                 array_length++;
                 input_position++;
@@ -870,26 +770,52 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                     printf("D2/1 ");
                 }
             } else {
-                if (datum_a(source, input_position, length)) {
-                    if (source[input_position] < 32) {
-                        codeword_array[array_length] = source[input_position] + 64;
-                    } else {
+                if (datum_b(source, input_position, length)) {
+
+                    if ((source[input_position] >= 32) && (source[input_position] <= 127)) {
                         codeword_array[array_length] = source[input_position] - 32;
+                        done = 1;
+
+                    } else if (source[input_position] == 13) {
+                        /* CR/LF */
+                        codeword_array[array_length] = 96;
+                        input_position++;
+                        done = 1;
+
+                    } else if (input_position != 0) {
+                        /* HT, FS, GS and RS in the first data position would be interpreted as a macro (see table 2) */
+                        switch(source[input_position]) {
+                            case 9: // HT
+                                codeword_array[array_length] = 97;
+                                break;
+                            case 28: // FS
+                                codeword_array[array_length] = 98;
+                                break;
+                            case 29: // GS
+                                codeword_array[array_length] = 99;
+                                break;
+                            case 30: // RS
+                                codeword_array[array_length] = 100;
+                                break;
+                        }
+                        done = 1;
                     }
-                    array_length++;
-                    input_position++;
-                    done = 1;
-                    if (debug) {
-                        printf("D2/2 ");
+
+                    if (done == 1) {
+                        array_length++;
+                        input_position++;
+                        if (debug) {
+                            printf("D2/2 ");
+                        }
                     }
                 }
             }
         }
 
         /* Step D3 */
-        if ((!done) && (encoding_mode == 'A')) {
-            if (binary(source, input_position)) {
-                if (datum_a(source, input_position + 1, length)) {
+        if ((!done) && (encoding_mode == 'B')) {
+            if (binary(source, length, input_position)) {
+                if (datum_b(source, input_position + 1, length)) {
                     if ((source[input_position] - 128) < 32) {
                         codeword_array[array_length] = 110; // Bin Shift A
                         array_length++;
@@ -915,6 +841,108 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
         }
 
         /* Step D4 */
+        if ((!done) && (encoding_mode == 'B')) {
+            if (ahead_a(source, input_position, length) == 1) {
+                codeword_array[array_length] = 101; // Shift A
+                array_length++;
+                if (source[input_position] < 32) {
+                    codeword_array[array_length] = source[input_position] + 64;
+                } else {
+                    codeword_array[array_length] = source[input_position] - 32;
+                }
+                array_length++;
+                input_position++;
+            } else {
+                codeword_array[array_length] = 102; // Latch A
+                array_length++;
+                encoding_mode = 'A';
+            }
+            done = 1;
+            if (debug) {
+                printf("D4 ");
+            }
+        }
+
+        /* Step E1 */
+        if ((!done) && (encoding_mode == 'A')) {
+            int n = try_c(source, input_position, length);
+            if (n >= 2) {
+                if (n <= 4) {
+                    codeword_array[array_length] = 103 + (n - 2); // nx Shift C
+                    array_length++;
+                    for (i = 0; i < n; i++) {
+                        codeword_array[array_length] = ((source[input_position] - '0') * 10) + (source[input_position + 1] - '0');
+                        array_length++;
+                        input_position += 2;
+                    }
+                } else {
+                    codeword_array[array_length] = 106; // Latch C
+                    array_length++;
+                    encoding_mode = 'C';
+                }
+                done = 1;
+                if (debug) {
+                    printf("E1 ");
+                }
+            }
+        }
+
+        /* Step E2 */
+        if ((!done) && (encoding_mode == 'A')) {
+            if ((source[input_position] == '[') && ((symbol->input_mode & 0x07) == GS1_MODE)) {
+                codeword_array[array_length] = 107; // FNC1
+                array_length++;
+                input_position++;
+                done = 1;
+                if (debug) {
+                    printf("E2/1 ");
+                }
+            } else {
+                if (datum_a(source, input_position, length)) {
+                    if (source[input_position] < 32) {
+                        codeword_array[array_length] = source[input_position] + 64;
+                    } else {
+                        codeword_array[array_length] = source[input_position] - 32;
+                    }
+                    array_length++;
+                    input_position++;
+                    done = 1;
+                    if (debug) {
+                        printf("E2/2 ");
+                    }
+                }
+            }
+        }
+
+        /* Step E3 */
+        if ((!done) && (encoding_mode == 'A')) {
+            if (binary(source, length, input_position)) {
+                if (datum_a(source, input_position + 1, length)) {
+                    if ((source[input_position] - 128) < 32) {
+                        codeword_array[array_length] = 110; // Bin Shift A
+                        array_length++;
+                        codeword_array[array_length] = source[input_position] - 128 + 64;
+                        array_length++;
+                    } else {
+                        codeword_array[array_length] = 111; // Bin Shift B
+                        array_length++;
+                        codeword_array[array_length] = source[input_position] - 128 - 32;
+                        array_length++;
+                    }
+                    input_position++;
+                } else {
+                    codeword_array[array_length] = 112; // Bin Latch
+                    array_length++;
+                    encoding_mode = 'X';
+                }
+                done = 1;
+                if (debug) {
+                    printf("E3 ");
+                }
+            }
+        }
+
+        /* Step E4 */
         if ((!done) && (encoding_mode == 'A')) {
             int n = ahead_b(source, input_position, length);
 
@@ -922,7 +950,16 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                 codeword_array[array_length] = 95 + n; // nx Shift B
                 array_length++;
                 for (i = 0; i < n; i++) {
-                    codeword_array[array_length] = source[input_position] - 32;
+                    if (source[input_position] >= 32) {
+                        codeword_array[array_length] = source[input_position] - 32;
+                    } else {
+                        switch(source[input_position]) {
+                            case 9: codeword_array[array_length] = 97; break; // HT
+                            case 28: codeword_array[array_length] = 98; break; // FS
+                            case 29: codeword_array[array_length] = 99; break; // GS
+                            case 30: codeword_array[array_length] = 100; break; // RS
+                        }
+                    }
                     array_length++;
                     input_position++;
                 }
@@ -933,11 +970,11 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
             }
             done = 1;
             if (debug) {
-                printf("D4 ");
+                printf("E4 ");
             }
         }
 
-        /* Step E1 */
+        /* Step F1 */
         if ((!done) && (encoding_mode == 'X')) {
             int n = try_c(source, input_position, length);
 
@@ -970,21 +1007,21 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                 }
                 done = 1;
                 if (debug) {
-                    printf("E1 ");
+                    printf("F1 ");
                 }
             }
         }
 
-        /* Step E2 */
+        /* Step F2 */
         /* Section 5.2.1.1 para D.2.i states:
          * "Groups of six codewords, each valued between 0 and 102, are radix converted from
          * base 103 into five base 259 values..."
          */
         if ((!done) && (encoding_mode == 'X')) {
-            if (binary(source, input_position)
-                    || binary(source, input_position + 1)
-                    || binary(source, input_position + 2)
-                    || binary(source, input_position + 3)) {
+            if (binary(source, length, input_position)
+                    || binary(source, length, input_position + 1)
+                    || binary(source, length, input_position + 2)
+                    || binary(source, length, input_position + 3)) {
                 binary_buffer *= 259;
                 binary_buffer += source[input_position];
                 binary_buffer_size++;
@@ -1005,12 +1042,12 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
                 input_position++;
                 done = 1;
                 if (debug) {
-                    printf("E2 ");
+                    printf("F2 ");
                 }
             }
         }
 
-        /* Step E3 */
+        /* Step F3 */
         if ((!done) && (encoding_mode == 'X')) {
             /* Empty binary buffer */
             for (i = 0; i < (binary_buffer_size + 1); i++) {
@@ -1035,7 +1072,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
             array_length++;
             done = 1;
             if (debug) {
-                printf("E3 ");
+                printf("F3 ");
             }
         }
     } while (input_position < length);
@@ -1057,7 +1094,7 @@ int dotcode_encode_message(struct zint_symbol *symbol, const unsigned char sourc
     }
 
     if (debug) {
-        printf("\n\n");
+        printf("\n");
     }
 
     return array_length;
@@ -1080,10 +1117,10 @@ static size_t make_dotstream(unsigned char masked_array[], int array_length, cha
     return strlen(dot_stream);
 }
 
-/* Determines if a given dot is a reserved corner dot 
- * to be used by one of the last six bits 
+/* Determines if a given dot is a reserved corner dot
+ * to be used by one of the last six bits
  */
-int is_corner(int column, int row, int width, int height) {
+static int is_corner(int column, int row, int width, int height) {
     int corner = 0;
 
     /* Top Left */
@@ -1125,7 +1162,7 @@ int is_corner(int column, int row, int width, int height) {
 }
 
 /* Place the dots in the symbol*/
-void fold_dotstream(char dot_stream[], int width, int height, char dot_array[]) {
+static void fold_dotstream(char dot_stream[], int width, int height, char dot_array[]) {
     int column, row;
     int input_position = 0;
 
@@ -1190,28 +1227,92 @@ void fold_dotstream(char dot_stream[], int width, int height, char dot_array[]) 
     }
 }
 
-int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length) {
+static void apply_mask(int mask, int data_length, unsigned char *masked_codeword_array, unsigned char *codeword_array, int ecc_length) {
+    int weight = 0;
+    int j;
+
+    switch (mask) {
+        case 0:
+            masked_codeword_array[0] = 0;
+            for (j = 0; j < data_length; j++) {
+                masked_codeword_array[j + 1] = codeword_array[j];
+            }
+            break;
+        case 1:
+            masked_codeword_array[0] = 1;
+            for (j = 0; j < data_length; j++) {
+                masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
+                weight += 3;
+            }
+            break;
+        case 2:
+            masked_codeword_array[0] = 2;
+            for (j = 0; j < data_length; j++) {
+                masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
+                weight += 7;
+            }
+            break;
+        case 3:
+            masked_codeword_array[0] = 3;
+            for (j = 0; j < data_length; j++) {
+                masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
+                weight += 17;
+            }
+            break;
+    }
+
+    rsencode(data_length + 1, ecc_length, masked_codeword_array);
+}
+
+static void force_corners(int width, int height, char *dot_array) {
+    if (width % 2) {
+        // "Vertical" symbol
+        dot_array[0] = '1';
+        dot_array[width - 1] = '1';
+        dot_array[(height - 2) * width] = '1';
+        dot_array[((height - 1) * width) - 1] = '1';
+        dot_array[((height - 1) * width) + 1] = '1';
+        dot_array[(height * width) - 2] = '1';
+    } else {
+        // "Horizontal" symbol
+        dot_array[0] = '1';
+        dot_array[width - 2] = '1';
+        dot_array[(2 * width) - 1] = '1';
+        dot_array[((height - 1) * width) - 1] = '1';
+        dot_array[(height - 1) * width] = '1';
+        dot_array[(height * width) - 2] = '1';
+    }
+}
+
+INTERNAL int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length) {
     int i, j, k;
-    size_t jc;
+    size_t jc, n_dots;
     int data_length, ecc_length;
-    int min_dots, n_dots, min_area;
+    int min_dots, min_area;
     int height, width;
-    int mask_score[4];
-    int weight;
+    int mask_score[8];
     size_t dot_stream_length;
     int high_score, best_mask;
     int binary_finish = 0;
-    int debug = 0;
+    int debug = symbol->debug;
     int padding_dots, is_first;
+    int codeword_array_len = length * 4 + 8; /* Allow up to 4 codewords per input + 2 (FNC) + 4 (ECI) + 2 (special char 1st position) */
+#ifdef _MSC_VER
+    unsigned char* masked_codeword_array;
+#endif
 
 #ifndef _MSC_VER
-    unsigned char codeword_array[length * 3];
+    unsigned char codeword_array[codeword_array_len];
 #else
     char* dot_stream;
     char* dot_array;
-    unsigned char* masked_codeword_array;
-    unsigned char* codeword_array = (unsigned char *) _alloca(length * 3 * sizeof (unsigned char));
+    unsigned char* codeword_array = (unsigned char *) _alloca(codeword_array_len);
 #endif /* _MSC_VER */
+
+    if (symbol->eci > 811799) {
+        strcpy(symbol->errtxt, "525: Invalid ECI");
+        return ZINT_ERROR_INVALID_OPTION;
+    }
 
     data_length = dotcode_encode_message(symbol, source, length, codeword_array, &binary_finish);
 
@@ -1219,6 +1320,11 @@ int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length
 
     if (debug) {
         printf("Codeword length = %d, ECC length = %d\n", data_length, ecc_length);
+        printf("Codewords: ");
+        for (i = 0; i < data_length; i++) {
+            printf("[%d] ",codeword_array[i]);
+        }
+        printf("\n");
     }
 
     min_dots = 9 * (data_length + 3 + (data_length / 2)) + 2;
@@ -1275,7 +1381,12 @@ int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length
     }
 
     if ((height > 200) || (width > 200)) {
-        strcpy(symbol->errtxt, "Specified symbol size is too large (E20)");
+        strcpy(symbol->errtxt, "526: Specified symbol size is too large");
+        return ZINT_ERROR_INVALID_OPTION;
+    }
+
+    if ((height < 5) || (width < 5)) {
+        strcpy(symbol->errtxt, "527: Specified symbol size has a dimension which is too small");
         return ZINT_ERROR_INVALID_OPTION;
     }
 
@@ -1319,6 +1430,7 @@ int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length
 
     ecc_length = 3 + (data_length / 2);
 
+
 #ifndef _MSC_VER
     unsigned char masked_codeword_array[data_length + 1 + ecc_length];
 #else
@@ -1327,40 +1439,8 @@ int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length
 
     /* Evaluate data mask options */
     for (i = 0; i < 4; i++) {
-        switch (i) {
-            case 0:
-                masked_codeword_array[0] = 0;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = codeword_array[j];
-                }
-                break;
-            case 1:
-                weight = 0;
-                masked_codeword_array[0] = 1;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
-                    weight += 3;
-                }
-                break;
-            case 2:
-                weight = 0;
-                masked_codeword_array[0] = 2;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
-                    weight += 7;
-                }
-                break;
-            case 3:
-                weight = 0;
-                masked_codeword_array[0] = 3;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
-                    weight += 17;
-                }
-                break;
-        }
 
-        rsencode(data_length + 1, ecc_length, masked_codeword_array);
+        apply_mask(i, data_length, masked_codeword_array, codeword_array, ecc_length);
 
         dot_stream_length = make_dotstream(masked_codeword_array, (data_length + ecc_length + 1), dot_stream);
 
@@ -1382,57 +1462,62 @@ int dotcode(struct zint_symbol *symbol, const unsigned char source[], int length
     best_mask = 0;
 
     for (i = 1; i < 4; i++) {
-        if (mask_score[i] > high_score) {
+        if (mask_score[i] >= high_score) {
             high_score = mask_score[i];
             best_mask = i;
         }
     }
 
-    if (best_mask != 3) {
-        /* Reprocess to get symbol with best mask */
-        switch (best_mask) {
-            case 0:
-                masked_codeword_array[0] = 0;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = codeword_array[j];
-                }
-                break;
-            case 1:
-                weight = 0;
-                masked_codeword_array[0] = 1;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
-                    weight += 3;
-                }
-                break;
-            case 2:
-                weight = 0;
-                masked_codeword_array[0] = 2;
-                for (j = 0; j < data_length; j++) {
-                    masked_codeword_array[j + 1] = (weight + codeword_array[j]) % 113;
-                    weight += 7;
-                }
-                break;
+    /* Re-evaluate using forced corners if needed */
+    if (best_mask <= (height * width) / 2) {
+        for (i = 0; i < 4; i++) {
+
+            apply_mask(i, data_length, masked_codeword_array, codeword_array, ecc_length);
+
+            dot_stream_length = make_dotstream(masked_codeword_array, (data_length + ecc_length + 1), dot_stream);
+
+            /* Add pad bits */
+            for (jc = dot_stream_length; jc < n_dots; jc++) {
+                strcat(dot_stream, "1");
+            }
+
+            fold_dotstream(dot_stream, width, height, dot_array);
+
+            force_corners(width, height, dot_array);
+
+            mask_score[i + 4] = score_array(dot_array, height, width);
+
+            if (debug) {
+                printf("Mask %d score is %d\n", i + 4, mask_score[i + 4]);
+            }
         }
 
-        rsencode(data_length + 1, ecc_length, masked_codeword_array);
-        dot_stream_length = make_dotstream(masked_codeword_array, (data_length + ecc_length + 1), dot_stream);
-
-        /* Add pad bits */
-        for (jc = dot_stream_length; jc < n_dots; jc++) {
-            strcat(dot_stream, "1");
+        for (i = 4; i < 8; i++) {
+            if (mask_score[i] >= high_score) {
+                high_score = mask_score[i];
+                best_mask = i;
+            }
         }
-
-        fold_dotstream(dot_stream, width, height, dot_array);
-    } /* else { the version with the best mask is already in memory } */
+    }
 
     if (debug) {
-        for (k = 0; k < height; k++) {
-            for (j = 0; j < width; j++) {
-                printf("%c", dot_array[(k * width) + j]);
-            }
-            printf("\n");
-        }
+        printf("Applying mask %d\n", best_mask);
+    }
+
+    /* Apply best mask */
+    apply_mask(best_mask % 4, data_length, masked_codeword_array, codeword_array, ecc_length);
+
+    dot_stream_length = make_dotstream(masked_codeword_array, (data_length + ecc_length + 1), dot_stream);
+
+    /* Add pad bits */
+    for (jc = dot_stream_length; jc < n_dots; jc++) {
+        strcat(dot_stream, "1");
+    }
+
+    fold_dotstream(dot_stream, width, height, dot_array);
+
+    if (best_mask >= 4) {
+        force_corners(width, height, dot_array);
     }
 
     /* Copy values to symbol */

@@ -2,7 +2,7 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2016 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008-2017 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,16 +29,10 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
-
-#define NUMERIC		110
-#define ALPHA		97
-#define ISOIEC		105
-#define	INVALID_CHAR	100
-#define	ANY_ENC		120
-#define ALPHA_OR_ISO	121
+/* vim: set ts=4 sw=4 et : */
 
 /* CC-A component coefficients from ISO/IEC 24728:2006 Annex F */
-static const int ccaCoeffs[30] = {
+static const unsigned short int ccaCoeffs[30] = {
     /* k = 4 */
     522, 568, 723, 809,
 
@@ -56,14 +50,14 @@ static const int ccaCoeffs[30] = {
 };
 
 /* rows, error codewords, k-offset of valid CC-A sizes from ISO/IEC 24723:2006 Table 9 */
-static const int ccaVariants[51] = {
+static const char ccaVariants[51] = {
     5, 6, 7, 8, 9, 10, 12, 4, 5, 6, 7, 8, 3, 4, 5, 6, 7,
     4, 4, 5, 5, 6, 6, 7, 4, 5, 6, 7, 7, 4, 5, 6, 7, 8,
     0, 0, 4, 4, 9, 9, 15, 0, 4, 9, 15, 15, 0, 4, 9, 15, 22
 };
 
 /* following is Left RAP, Centre RAP, Right RAP and Start Cluster from ISO/IEC 24723:2006 tables 10 and 11 */
-static const int aRAPTable[68] = {
+static const char aRAPTable[68] = {
     39, 1, 32, 8, 14, 43, 20, 11, 1, 5, 15, 21, 40, 43, 46, 34, 29,
     0, 0, 0, 0, 0, 0, 0, 43, 33, 37, 47, 1, 20, 23, 26, 14, 9,
     19, 33, 12, 40, 46, 23, 52, 23, 13, 17, 27, 33, 52, 3, 6, 46, 41,

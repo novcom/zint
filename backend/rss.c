@@ -2,20 +2,20 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2016 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008-2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,25 +26,26 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* vim: set ts=4 sw=4 et : */
 
 /* The functions "combins" and "getRSSwidths" are copyright BSI and are
    released with permission under the following terms:
-   
+
    "Copyright subsists in all BSI publications. BSI also holds the copyright, in the
    UK, of the international standardisation bodies. Except as
    permitted under the Copyright, Designs and Patents Act 1988 no extract may be
    reproduced, stored in a retrieval system or transmitted in any form or by any
    means - electronic, photocopying, recording or otherwise - without prior written
    permission from BSI.
-   
+
    "This does not preclude the free use, in the course of implementing the standard,
    of necessary details such as symbols, and size, type or grade designations. If these
    details are to be used for any other purpose than implementation then the prior
    written permission of BSI must be obtained."
-   
+
    The date of publication for these functions is 30 November 2006
  */
 
@@ -52,7 +53,7 @@
 
 /* Note: This code reflects the symbol names as used in ISO/IEC 24724:2006. These names
  * were updated in ISO/IEC 24724:2011 as follows:
- * 
+ *
  * RSS-14 > GS1 DataBar Omnidirectional
  * RSS-14 Truncated > GS1 DataBar Truncated
  * RSS-14 Stacked > GS1 DataBar Stacked
@@ -66,18 +67,19 @@
 #include <string.h>
 #include <stdlib.h>
 #ifdef _MSC_VER
-#include <malloc.h> 
+#include <malloc.h>
 #endif
 #include "common.h"
 #include "large.h"
 #include "rss.h"
 #include "gs1.h"
+#include "general_field.h"
 
 /**********************************************************************
  * combins(n,r): returns the number of Combinations of r selected from n:
  *   Combinations = n! / ((n - r)! * r!)
  **********************************************************************/
-int combins(int n, int r) {
+static int combins(int n, int r) {
     int i, j;
     int maxDenom, minDenom;
     int val;
@@ -118,7 +120,7 @@ int combins(int n, int r) {
  * Return:
  * static int widths[] = element widths
  **********************************************************************/
-void getRSSwidths(int val, int n, int elements, int maxWidth, int noNarrow) {
+static void getRSSwidths(int val, int n, int elements, int maxWidth, int noNarrow) {
     int bar;
     int elmWidth;
     int mxwElement;
@@ -159,23 +161,23 @@ void getRSSwidths(int val, int n, int elements, int maxWidth, int noNarrow) {
 }
 
 /* GS1 DataBar-14 */
-int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
+INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     int error_number = 0, i, j, mask;
     short int accum[112], left_reg[112], right_reg[112], x_reg[112], y_reg[112];
     int data_character[4], data_group[4], v_odd[4], v_even[4];
     int data_widths[8][4], checksum, c_left, c_right, total_widths[46], writer;
-    char latch, hrt[15], temp[32];
-    int check_digit, count, separator_row;
+    char latch, temp[32];
+    int separator_row;
 
     separator_row = 0;
 
     if (src_len > 13) {
-        strcpy(symbol->errtxt, "Input too long (C80)");
+        strcpy(symbol->errtxt, "380: Input too long");
         return ZINT_ERROR_TOO_LONG;
     }
     error_number = is_sane(NEON, source, src_len);
     if (error_number == ZINT_ERROR_INVALID_DATA) {
-        strcpy(symbol->errtxt, "Invalid characters in data (C81)");
+        strcpy(symbol->errtxt, "381: Invalid characters in data");
         return error_number;
     }
 
@@ -221,7 +223,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     }
 
     for (i = 24; i >= 0; i--) {
-        y_reg[i] = islarger(accum, x_reg);
+        y_reg[i] = !islarger(x_reg, accum);
         if (y_reg[i] == 1) {
             binary_subtract(accum, x_reg);
         }
@@ -245,7 +247,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     }
 
     for (i = 24; i >= 0; i--) {
-        y_reg[i] = islarger(accum, x_reg);
+        y_reg[i] = !islarger(x_reg, accum);
         if (y_reg[i] == 1) {
             binary_subtract(accum, x_reg);
         }
@@ -275,7 +277,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     }
 
     for (i = 24; i >= 0; i--) {
-        y_reg[i] = islarger(accum, x_reg);
+        y_reg[i] = !islarger(x_reg, accum);
         if (y_reg[i] == 1) {
             binary_subtract(accum, x_reg);
         }
@@ -428,6 +430,9 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
 
     /* Put this data into the symbol */
     if ((symbol->symbology == BARCODE_RSS14) || (symbol->symbology == BARCODE_RSS14_CC)) {
+        int count;
+        int check_digit;
+        char hrt[15];
         writer = 0;
         latch = '0';
         for (i = 0; i < 46; i++) {
@@ -514,7 +519,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
         hrt[13] = itoc(check_digit);
 
         strcat((char*) symbol->text, hrt);
-        
+
         set_minimum_height(symbol, 14); // Minimum height is 14X for truncated symbol
     }
 
@@ -563,7 +568,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
         }
         symbol->row_height[symbol->rows] = 7;
         /* separator pattern */
-        for (i = 4; i < 46; i++) {
+        for (i = 1; i < 46; i++) {
             if (module_is_set(symbol, symbol->rows - 2, i) == module_is_set(symbol, symbol->rows, i)) {
                 if (!(module_is_set(symbol, symbol->rows - 2, i))) {
                     set_module(symbol, symbol->rows - 1, i);
@@ -574,6 +579,9 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
                 }
             }
         }
+        unset_module(symbol, symbol->rows - 1, 1);
+        unset_module(symbol, symbol->rows - 1, 2);
+        unset_module(symbol, symbol->rows - 1, 3);
         symbol->row_height[symbol->rows - 1] = 1;
         if (symbol->symbology == BARCODE_RSS14STACK_CC) {
             /* separator pattern for composite symbol */
@@ -718,7 +726,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
             }
         }
         symbol->rows = symbol->rows + 1;
-        
+
         set_minimum_height(symbol, 33);
     }
 
@@ -727,7 +735,7 @@ int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
 }
 
 /* GS1 DataBar Limited */
-int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) {
+INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     int error_number = 0, i, mask;
     short int accum[112], left_reg[112], right_reg[112], x_reg[112], y_reg[112];
     int left_group, right_group, left_odd, left_even, right_odd, right_even;
@@ -739,17 +747,17 @@ int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) 
     separator_row = 0;
 
     if (src_len > 13) {
-        strcpy(symbol->errtxt, "Input too long (C82)");
+        strcpy(symbol->errtxt, "382: Input too long");
         return ZINT_ERROR_TOO_LONG;
     }
     error_number = is_sane(NEON, source, src_len);
     if (error_number == ZINT_ERROR_INVALID_DATA) {
-        strcpy(symbol->errtxt, "Invalid characters in data (C83)");
+        strcpy(symbol->errtxt, "383: Invalid characters in data");
         return error_number;
     }
     if (src_len == 13) {
         if ((source[0] != '0') && (source[0] != '1')) {
-            strcpy(symbol->errtxt, "Input out of range (C84)");
+            strcpy(symbol->errtxt, "384: Input out of range");
             return ZINT_ERROR_INVALID_DATA;
         }
     }
@@ -787,7 +795,7 @@ int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) 
     }
 
     for (i = 24; i >= 0; i--) {
-        y_reg[i] = islarger(accum, x_reg);
+        y_reg[i] = !islarger(x_reg, accum);
         if (y_reg[i] == 1) {
             binary_subtract(accum, x_reg);
         }
@@ -1046,136 +1054,20 @@ int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) 
     hrt[14] = '\0';
 
     strcat((char*) symbol->text, hrt);
-    
+
     set_minimum_height(symbol, 10);
 
     return error_number;
 }
 
-/* Attempts to apply encoding rules from secions 7.2.5.5.1 to 7.2.5.5.3
- * of ISO/IEC 24724:2006 */
-int general_rules(char field[], char type[]) {
-
-    int block[2][200], block_count, i, j, k;
-    char current, next, last;
-
-    block_count = 0;
-
-    block[0][block_count] = 1;
-    block[1][block_count] = type[0];
-
-    for (i = 1; i < strlen(type); i++) {
-        current = type[i];
-        last = type[i - 1];
-
-        if (current == last) {
-            block[0][block_count] = block[0][block_count] + 1;
-        } else {
-            block_count++;
-            block[0][block_count] = 1;
-            block[1][block_count] = type[i];
-        }
-    }
-
-    block_count++;
-
-    for (i = 0; i < block_count; i++) {
-        current = block[1][i];
-        next = (block[1][i + 1] & 0xFF);
-
-        if ((current == ISOIEC) && (i != (block_count - 1))) {
-            if ((next == ANY_ENC) && (block[0][i + 1] >= 4)) {
-                block[1][i + 1] = NUMERIC;
-            }
-            if ((next == ANY_ENC) && (block[0][i + 1] < 4)) {
-                block[1][i + 1] = ISOIEC;
-            }
-            if ((next == ALPHA_OR_ISO) && (block[0][i + 1] >= 5)) {
-                block[1][i + 1] = ALPHA;
-            }
-            if ((next == ALPHA_OR_ISO) && (block[0][i + 1] < 5)) {
-                block[1][i + 1] = ISOIEC;
-            }
-        }
-
-        if (current == ALPHA_OR_ISO) {
-            block[1][i] = ALPHA;
-            current = ALPHA;
-        }
-
-        if ((current == ALPHA) && (i != (block_count - 1))) {
-            if ((next == ANY_ENC) && (block[0][i + 1] >= 6)) {
-                block[1][i + 1] = NUMERIC;
-            }
-            if ((next == ANY_ENC) && (block[0][i + 1] < 6)) {
-                if ((i == block_count - 2) && (block[0][i + 1] >= 4)) {
-                    block[1][i + 1] = NUMERIC;
-                } else {
-                    block[1][i + 1] = ALPHA;
-                }
-            }
-        }
-
-        if (current == ANY_ENC) {
-            block[1][i] = NUMERIC;
-        }
-    }
-
-    if (block_count > 1) {
-        i = 1;
-        while (i < block_count) {
-            if (block[1][i - 1] == block[1][i]) {
-                /* bring together */
-                block[0][i - 1] = block[0][i - 1] + block[0][i];
-                j = i + 1;
-
-                /* decreace the list */
-                while (j < block_count) {
-                    block[0][j - 1] = block[0][j];
-                    block[1][j - 1] = block[1][j];
-                    j++;
-                }
-                block_count--;
-                i--;
-            }
-            i++;
-        }
-    }
-
-    for (i = 0; i < block_count - 1; i++) {
-        if ((block[1][i] == NUMERIC) && (block[0][i] & 1)) {
-            /* Odd size numeric block */
-            block[0][i] = block[0][i] - 1;
-            block[0][i + 1] = block[0][i + 1] + 1;
-        }
-    }
-
-    j = 0;
-    for (i = 0; i < block_count; i++) {
-        for (k = 0; k < block[0][i]; k++) {
-            type[j] = block[1][i];
-            j++;
-        }
-    }
-
-    if ((block[1][block_count - 1] == NUMERIC) && (block[0][block_count - 1] & 1)) {
-        /* If the last block is numeric and an odd size, further
-        processing needs to be done outside this procedure */
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
 /* Handles all data encodation from section 7.2.5 of ISO/IEC 24724 */
-int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_string[]) {
-    int encoding_method, i, j, read_posn, latch, debug = symbol->debug, last_mode = ISOIEC;
+static int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_string[]) {
+    int encoding_method, i, j, read_posn, last_digit, debug = symbol->debug, mode = NUMERIC;
     int symbol_characters, characters_per_row;
 #ifndef _MSC_VER
-    char general_field[strlen(source) + 1], general_field_type[strlen(source) + 1];
+    char general_field[strlen(source) + 1];
 #else
     char* general_field = (char*) _alloca(strlen(source) + 1);
-    char* general_field_type = (char*) _alloca(strlen(source) + 1);
 #endif
     int remainder, d1, d2;
     char padstring[40];
@@ -1192,7 +1084,7 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
     } else {
         /* any AIs */
         encoding_method = 2;
-        if (debug) printf("Choosing Mehod 2\n");
+        if (debug) printf("Choosing Method 2\n");
     }
 
     if (((strlen(source) >= 20) && (encoding_method == 1)) && ((source[2] == '9') && (source[16] == '3'))) {
@@ -1205,7 +1097,6 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             if (source[18] == '0') {
                 /* (01) and (310x) */
                 char weight_str[7];
-                float weight; /* In kilos */
 
                 for (i = 0; i < 6; i++) {
                     weight_str[i] = source[20 + i];
@@ -1214,11 +1105,9 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
 
                 if (weight_str[0] == '0') { /* Maximum weight = 99999 */
 
-
-                    encoding_method = 7;
-
                     if ((source[19] == '3') && (strlen(source) == 26)) {
                         /* (01) and (3103) */
+                        float weight; /* In kilos */
                         weight = atof(weight_str) / 1000.0;
 
                         if (weight <= 32.767) {
@@ -1258,7 +1147,6 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             if (source[18] == '0') {
                 /* (01) and (320x) */
                 char weight_str[7];
-                float weight; /* In pounds */
 
                 for (i = 0; i < 6; i++) {
                     weight_str[i] = source[20 + i];
@@ -1267,10 +1155,9 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
 
                 if (weight_str[0] == '0') { /* Maximum weight = 99999 */
 
-                    encoding_method = 8;
-
                     if (((source[19] == '2') || (source[19] == '3')) && (strlen(source) == 26)) {
                         /* (01) and (3202)/(3203) */
+                        float weight; /* In pounds */
 
                         if (source[19] == '3') {
                             weight = (float) (atof(weight_str) / 1000.0F);
@@ -1361,7 +1248,7 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
         if ((source[i] < '0') || (source[i] > '9')) {
             if ((source[i] != '[') && (source[i] != ']')) {
                 /* Something is wrong */
-                strcpy(symbol->errtxt, "Invalid characters in input data (C85)");
+                strcpy(symbol->errtxt, "385: Invalid characters in input data");
                 return ZINT_ERROR_INVALID_DATA;
             }
         }
@@ -1417,12 +1304,12 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             bin_append(atoi(weight_str), 15, binary_string);
         }
     }
-    
+
     if ((encoding_method == 5) || (encoding_method == 6)) {
         /* Encoding method "01100" - variable measure item and price */
         /* Encoding method "01101" - variable measure item and price with ISO 4217
         Currency Code */
-        
+
         char group[4];
 
         for (i = 1; i < 5; i++) {
@@ -1430,15 +1317,15 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             group[1] = source[(i * 3) + 1];
             group[2] = source[(i * 3) + 2];
             group[3] = '\0';
-            
+
             bin_append(atoi(group), 10, binary_string);
         }
 
         bin_append(source[19] - '0', 2, binary_string);
-        
+
         if (encoding_method == 6) {
             char currency_str[5];
-            
+
             for (i = 0; i < 3; i++) {
                 currency_str[i] = source[20 + i];
             }
@@ -1454,14 +1341,13 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
         char group[4];
         int group_val;
         char weight_str[8];
-        char date_str[4];
 
         for (i = 1; i < 5; i++) {
             group[0] = source[(i * 3)];
             group[1] = source[(i * 3) + 1];
             group[2] = source[(i * 3) + 2];
             group[3] = '\0';
-            
+
             bin_append(atoi(group), 10, binary_string);
         }
 
@@ -1471,11 +1357,12 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             weight_str[i + 1] = source[21 + i];
         }
         weight_str[6] = '\0';
-        
+
         bin_append(atoi(weight_str), 20, binary_string);
 
         if (strlen(source) == 34) {
             /* Date information is included */
+            char date_str[4];
             date_str[0] = source[28];
             date_str[1] = source[29];
             date_str[2] = '\0';
@@ -1499,238 +1386,18 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
     rest of the data (if any) goes into a general-purpose data compaction field */
 
     j = 0;
-    for (i = read_posn; i < strlen(source); i++) {
+    for (i = read_posn; i < (int) strlen(source); i++) {
         general_field[j] = source[i];
         j++;
     }
     general_field[j] = '\0';
     if (debug) printf("General field data = %s\n", general_field);
 
-    latch = 0;
-    for (i = 0; i < strlen(general_field); i++) {
-        /* Table 13 - ISO/IEC 646 encodation */
-        if ((general_field[i] < ' ') || (general_field[i] > 'z')) {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        } else {
-            general_field_type[i] = ISOIEC;
-        }
-
-        if (general_field[i] == '#') {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-        if (general_field[i] == '$') {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-        if (general_field[i] == '@') {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-        if (general_field[i] == 92) {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-        if (general_field[i] == '^') {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-        if (general_field[i] == 96) {
-            general_field_type[i] = INVALID_CHAR;
-            latch = 1;
-        }
-
-        /* Table 12 - Alphanumeric encodation */
-        if ((general_field[i] >= 'A') && (general_field[i] <= 'Z')) {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-        if (general_field[i] == '*') {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-        if (general_field[i] == ',') {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-        if (general_field[i] == '-') {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-        if (general_field[i] == '.') {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-        if (general_field[i] == '/') {
-            general_field_type[i] = ALPHA_OR_ISO;
-        }
-
-        /* Numeric encodation */
-        if ((general_field[i] >= '0') && (general_field[i] <= '9')) {
-            general_field_type[i] = ANY_ENC;
-        }
-        if (general_field[i] == '[') {
-            /* FNC1 can be encoded in any system */
-            general_field_type[i] = ANY_ENC;
-        }
-    }
-
-    general_field_type[strlen(general_field)] = '\0';
-    if (debug) printf("General field type: %s\n", general_field_type);
-
-    if (latch == 1) {
+    if (!general_field_encode(general_field, &mode, &last_digit, binary_string)) {
         /* Invalid characters in input data */
-        strcpy(symbol->errtxt, "Invalid characters in input data (C86)");
+        strcpy(symbol->errtxt, "386: Invalid characters in input data");
         return ZINT_ERROR_INVALID_DATA;
     }
-
-    for (i = 0; i < strlen(general_field); i++) {
-        if ((general_field_type[i] == ISOIEC) && (general_field[i + 1] == '[')) {
-            general_field_type[i + 1] = ISOIEC;
-        }
-    }
-
-    for (i = 0; i < strlen(general_field); i++) {
-        if ((general_field_type[i] == ALPHA_OR_ISO) && (general_field[i + 1] == '[')) {
-            general_field_type[i + 1] = ALPHA_OR_ISO;
-        }
-    }
-
-    latch = general_rules(general_field, general_field_type);
-    if (debug) printf("General field type: %s\n", general_field_type);
-
-    last_mode = NUMERIC;
-
-    /* Set initial mode if not NUMERIC */
-    if (general_field_type[0] == ALPHA) {
-        bin_append(0, 4, binary_string); /* Alphanumeric latch */
-        last_mode = ALPHA;
-    }
-    if (general_field_type[0] == ISOIEC) {
-        bin_append(0, 4, binary_string); /* Alphanumeric latch */
-        bin_append(4, 5, binary_string); /* ISO/IEC 646 latch */
-        last_mode = ISOIEC;
-    }
-
-    i = 0;
-    do {
-        if (debug) printf("Processing character %d ", i);
-        switch (general_field_type[i]) {
-            case NUMERIC:
-                if (debug) printf("as NUMERIC:");
-
-                if (last_mode != NUMERIC) {
-                    bin_append(0, 3, binary_string); /* Numeric latch */
-                    if (debug) printf("<NUMERIC LATCH>\n");
-                }
-
-                if (debug) printf("  %c%c > ", general_field[i], general_field[i + 1]);
-                if (general_field[i] != '[') {
-                    d1 = ctoi(general_field[i]);
-                } else {
-                    d1 = 10;
-                }
-
-                if (general_field[i + 1] != '[') {
-                    d2 = ctoi(general_field[i + 1]);
-                } else {
-                    d2 = 10;
-                }
-
-                bin_append((11 * d1) + d2 + 8, 7, binary_string);
-
-                i += 2;
-                if (debug) printf("\n");
-                last_mode = NUMERIC;
-                break;
-
-            case ALPHA:
-                if (debug) printf("as ALPHA\n");
-                if (i != 0) {
-                    if (last_mode == NUMERIC) {
-                        bin_append(0, 4, binary_string); /* Alphanumeric latch */
-                    }
-                    if (last_mode == ISOIEC) {
-                        bin_append(4, 5, binary_string); /* Alphanumeric latch */
-                    }
-                }
-
-                if ((general_field[i] >= '0') && (general_field[i] <= '9')) {
-                    bin_append(general_field[i] - 43, 5, binary_string);
-                }
-
-                if ((general_field[i] >= 'A') && (general_field[i] <= 'Z')) {
-                    bin_append(general_field[i] - 33, 6, binary_string);
-                }
-
-                last_mode = ALPHA;
-                
-                if (general_field[i] == '[') {
-                    bin_append(15, 5, binary_string);
-                    last_mode = NUMERIC;
-                } /* FNC1/Numeric latch */
-                
-                if (general_field[i] == '*') bin_append(58, 6, binary_string); /* asterisk */
-                if (general_field[i] == ',') bin_append(59, 6, binary_string); /* comma */
-                if (general_field[i] == '-') bin_append(60, 6, binary_string); /* minus or hyphen */
-                if (general_field[i] == '.') bin_append(61, 6, binary_string); /* period or full stop */
-                if (general_field[i] == '/') bin_append(62, 6, binary_string); /* slash or solidus */
-
-                i++;
-                break;
-
-            case ISOIEC:
-                if (debug) printf("as ISOIEC\n");
-                if (i != 0) {
-                    if (last_mode == NUMERIC) {
-                        bin_append(0, 4, binary_string); /* Alphanumeric latch */
-                        bin_append(4, 5, binary_string); /* ISO/IEC 646 latch */
-                    }
-                    if (last_mode == ALPHA) {
-                        bin_append(4, 5, binary_string); /* ISO/IEC 646 latch */
-                    }
-                }
-
-                if ((general_field[i] >= '0') && (general_field[i] <= '9')) {
-                    bin_append(general_field[i] - 43, 5, binary_string);
-                }
-
-                if ((general_field[i] >= 'A') && (general_field[i] <= 'Z')) {
-                    bin_append(general_field[i] - 1, 7, binary_string);
-                }
-
-                if ((general_field[i] >= 'a') && (general_field[i] <= 'z')) {
-                    bin_append(general_field[i] - 7, 7, binary_string);
-                }
-                last_mode = ISOIEC;
-                
-                if (general_field[i] == '[') {
-                    bin_append(15, 5, binary_string);
-                    last_mode = NUMERIC;
-                } /* FNC1/Numeric latch */
-                
-                if (general_field[i] == '!') bin_append(232, 8, binary_string); /* exclamation mark */
-                if (general_field[i] == 34)  bin_append(233, 8, binary_string); /* quotation mark */
-                if (general_field[i] == 37)  bin_append(234, 8, binary_string); /* percent sign */
-                if (general_field[i] == '&') bin_append(235, 8, binary_string); /* ampersand */
-                if (general_field[i] == 39)  bin_append(236, 8, binary_string); /* apostrophe */
-                if (general_field[i] == '(') bin_append(237, 8, binary_string); /* left parenthesis */
-                if (general_field[i] == ')') bin_append(238, 8, binary_string); /* right parenthesis */
-                if (general_field[i] == '*') bin_append(239, 8, binary_string); /* asterisk */
-                if (general_field[i] == '+') bin_append(240, 8, binary_string); /* plus sign */
-                if (general_field[i] == ',') bin_append(241, 8, binary_string); /* comma */
-                if (general_field[i] == '-') bin_append(242, 8, binary_string); /* minus or hyphen */
-                if (general_field[i] == '.') bin_append(243, 8, binary_string); /* period or full stop */
-                if (general_field[i] == '/') bin_append(244, 8, binary_string); /* slash or solidus */
-                if (general_field[i] == ':') bin_append(245, 8, binary_string); /* colon */
-                if (general_field[i] == ';') bin_append(246, 8, binary_string); /* semicolon */
-                if (general_field[i] == '<') bin_append(247, 8, binary_string); /* less-than sign */
-                if (general_field[i] == '=') bin_append(248, 8, binary_string); /* equals sign */
-                if (general_field[i] == '>') bin_append(249, 8, binary_string); /* greater-than sign */
-                if (general_field[i] == '?') bin_append(250, 8, binary_string); /* question mark */
-                if (general_field[i] == '_') bin_append(251, 8, binary_string); /* underline or low line */
-                if (general_field[i] == ' ') bin_append(252, 8, binary_string); /* space */
-
-                i++;
-                break;
-        }
-    } while (i + latch < strlen(general_field));
     if (debug) printf("Resultant binary = %s\n", binary_string);
     if (debug) printf("\tLength: %d\n", (int) strlen(binary_string));
 
@@ -1739,44 +1406,36 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
         remainder = 0;
     }
     symbol_characters = ((strlen(binary_string) + remainder) / 12) + 1;
-    
+
     if ((symbol->symbology == BARCODE_RSS_EXPSTACK) || (symbol->symbology == BARCODE_RSS_EXPSTACK_CC)) {
         characters_per_row = symbol->option_2 * 2;
-        
+
         if ((characters_per_row < 2) || (characters_per_row > 20)) {
             characters_per_row = 4;
         }
-        
+
         if ((symbol_characters % characters_per_row) == 1) {
             symbol_characters++;
         }
-        
-        if (symbol_characters < 4) {
-            symbol_characters = 4;
-        }
     }
-    
-    if (symbol_characters < 3) {
-        symbol_characters = 3;
+
+    if (symbol_characters < 4) {
+        symbol_characters = 4;
     }
-    
+
     remainder = (12 * (symbol_characters - 1)) - strlen(binary_string);
-    
-    if (latch == 1) {
+
+    if (last_digit) {
         /* There is still one more numeric digit to encode */
         if (debug) printf("Adding extra (odd) numeric digit\n");
 
-        if (last_mode == NUMERIC) {
-            if ((remainder >= 4) && (remainder <= 6)) {
-                bin_append(ctoi(general_field[i]) + 1, 4, binary_string);
-            } else {
-                d1 = ctoi(general_field[i]);
-                d2 = 10;
-
-                bin_append((11 * d1) + d2 + 8, 7, binary_string);
-            }
+        if ((remainder >= 4) && (remainder <= 6)) {
+            bin_append(ctoi(last_digit) + 1, 4, binary_string);
         } else {
-            bin_append(general_field[i] - 43, 5, binary_string);
+            d1 = ctoi(last_digit);
+            d2 = 10;
+
+            bin_append((11 * d1) + d2 + 8, 7, binary_string);
         }
 
         remainder = 12 - (strlen(binary_string) % 12);
@@ -1795,30 +1454,26 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
             if ((symbol_characters % characters_per_row) == 1) {
                 symbol_characters++;
             }
-
-            if (symbol_characters < 4) {
-                symbol_characters = 4;
-            }
         }
 
-        if (symbol_characters < 3) {
-            symbol_characters = 3;
+        if (symbol_characters < 4) {
+            symbol_characters = 4;
         }
 
         remainder = (12 * (symbol_characters - 1)) - strlen(binary_string);
-        
+
         if (debug) printf("Resultant binary = %s\n", binary_string);
         if (debug) printf("\tLength: %d\n", (int) strlen(binary_string));
     }
 
-    if (strlen(binary_string) > 252) {
-        strcpy(symbol->errtxt, "Input too long");
+    if (strlen(binary_string) > 252) { /* 252 = (21 * 12) */
+        strcpy(symbol->errtxt, "387: Input too long");
         return ZINT_ERROR_TOO_LONG;
     }
 
     /* Now add padding to binary string (7.2.5.5.4) */
     i = remainder;
-    if ((strlen(general_field) != 0) && (last_mode == NUMERIC)) {
+    if (mode == NUMERIC) {
         strcpy(padstring, "0000");
         i -= 4;
     } else {
@@ -1830,7 +1485,7 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
 
     padstring[remainder] = '\0';
     strcat(binary_string, padstring);
-    
+
     /* Patch variable length symbol bit field */
     d1 = symbol_characters & 1;
 
@@ -1858,30 +1513,26 @@ int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_str
 }
 
 /* GS1 DataBar Expanded */
-int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len) {
+INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     int i, j, k, p, data_chars, vs[21], group[21], v_odd[21], v_even[21];
     char substring[21][14], latch;
     int char_widths[21][8], checksum, check_widths[8], c_group;
     int check_char, c_odd, c_even, elements[235], pattern_width, reader, writer;
-    int row, elements_in_sub, special_case_row, left_to_right;
-    int codeblocks, sub_elements[235], stack_rows, current_row, current_block;
     int separator_row;
+    unsigned int bin_len = 13 * src_len + 200 + 1; /* Allow for 8 bits + 5-bit latch per char + 200 bits overhead/padding */
 #ifndef _MSC_VER
-    char reduced[src_len + 1], binary_string[(7 * src_len) + 1];
+    char reduced[src_len + 1], binary_string[bin_len];
 #else
     char* reduced = (char*) _alloca(src_len + 1);
-    char* binary_string = (char*) _alloca((7 * src_len) + 1);
+    char* binary_string = (char*) _alloca(bin_len);
 #endif
 
     separator_row = 0;
     reader = 0;
 
-    if (symbol->input_mode != GS1_MODE) {
-        /* GS1 data has not been verified yet */
-        i = gs1_verify(symbol, source, src_len, reduced);
-        if (i != 0) {
-            return i;
-        }
+    i = gs1_verify(symbol, source, src_len, reduced);
+    if (i != 0) {
+        return i;
     }
 
     if ((symbol->symbology == BARCODE_RSS_EXP_CC) || (symbol->symbology == BARCODE_RSS_EXPSTACK_CC)) {
@@ -1958,7 +1609,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
        elements in the data characters. */
     checksum = 0;
     for (i = 0; i < data_chars; i++) {
-        row = weight_rows[(((data_chars - 2) / 2) * 21) + i];
+        int row = weight_rows[(((data_chars - 2) / 2) * 21) + i];
         for (j = 0; j < 8; j++) {
             checksum += (char_widths[i][j] * checksum_weight_exp[(row * 8) + j]);
 
@@ -2032,13 +1683,13 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
 
     if ((symbol->symbology == BARCODE_RSS_EXP) || (symbol->symbology == BARCODE_RSS_EXP_CC)) {
         /* Copy elements into symbol */
-        
+
         elements[0] = 1; // left guard
         elements[1] = 1;
-        
+
         elements[pattern_width - 2] = 1; // right guard
         elements[pattern_width - 1] = 1;
-        
+
         writer = 0;
         latch = '0';
         for (i = 0; i < pattern_width; i++) {
@@ -2096,13 +1747,15 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
         }
 
     } else {
+        int stack_rows;
+        int current_row, current_block, left_to_right;
         /* RSS Expanded Stacked */
 
         /* Bug corrected: Character missing for message
          * [01]90614141999996[10]1234222222222221
          * Patch by Daniel Frede
          */
-        codeblocks = (data_chars + 1) / 2 + ((data_chars + 1) % 2);
+        int codeblocks = (data_chars + 1) / 2 + ((data_chars + 1) % 2);
 
 
         if ((symbol->option_2 < 1) || (symbol->option_2 > 10)) {
@@ -2122,10 +1775,12 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
 
         current_block = 0;
         for (current_row = 1; current_row <= stack_rows; current_row++) {
+            int special_case_row = 0;
+            int elements_in_sub;
+            int sub_elements[235];
             for (i = 0; i < 235; i++) {
                 sub_elements[i] = 0;
             }
-            special_case_row = 0;
 
             /* Row Start */
             sub_elements[0] = 1; // left guard
@@ -2139,7 +1794,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
                         ((current_row == stack_rows) && (codeblocks != (current_row * symbol->option_2)) &&
                         (((current_row * symbol->option_2) - codeblocks) & 1))) {
                     /* left to right */
-                    left_to_right = 1;
+                     left_to_right = 1;
                     i = 2 + (current_block * 21);
                     for (j = 0; j < 21; j++) {
                         if ((i + j) < pattern_width) {
@@ -2147,7 +1802,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
                         }
                         elements_in_sub++;
                     }
-                } else { 
+                } else {
                     /* right to left */
                     left_to_right = 0;
                     i = 2 + (((current_row * symbol->option_2) - reader - 1) * 21);
@@ -2167,7 +1822,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
             sub_elements[elements_in_sub + 1] = 1;
             elements_in_sub += 2;
 
-            latch = current_row & 1 ? '0' : '1';
+            latch = (current_row & 1) ? '0' : '1';
 
             if ((current_row == stack_rows) && (codeblocks != (current_row * symbol->option_2)) &&
                     ((current_row & 1) == 0) && ((symbol->option_2 & 1) == 0)) {
@@ -2204,7 +1859,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
                 }
                 symbol->row_height[symbol->rows - 2] = 1;
                 /* bottom separator pattern (above current row) */
-                for (j = 4; j < (writer - 4); j++) {
+                for (j = 4 + special_case_row; j < (writer - 4); j++) {
                     if (module_is_set(symbol, symbol->rows, j)) {
                         unset_module(symbol, symbol->rows - 1, j);
                     } else {
@@ -2296,7 +1951,7 @@ int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len)
         }
 
     }
-    
+
     for (i = 0; i < symbol->rows; i++) {
         if (symbol->row_height[i] == 0) {
             symbol->row_height[i] = 34;
