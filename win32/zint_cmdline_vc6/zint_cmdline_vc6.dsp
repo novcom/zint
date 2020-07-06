@@ -42,7 +42,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /GX /O2 /I "..\..\backend" /I "..\..\..\zlib" /I "..\..\..\lpng" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /D ZINT_VERSION="\"2.6\"" /c
+# ADD CPP /nologo /MD /W3 /GX /O2 /I "..\..\backend" /I "..\..\..\zlib" /I "..\..\..\lpng" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /D ZINT_VERSION="\"2.6.7\"" /c
 # ADD BASE RSC /l 0x407 /d "NDEBUG"
 # ADD RSC /l 0x407 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -152,6 +152,18 @@ SOURCE=..\..\backend\emf.c
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\backend\gb18030.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\backend\gb2312.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\backend\general_field.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\frontend\getopt.c
 # End Source File
 # Begin Source File
@@ -185,6 +197,10 @@ SOURCE=..\..\backend\large.c
 # Begin Source File
 
 SOURCE=..\..\backend\library.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\backend\mailmark.c
 # End Source File
 # Begin Source File
 
@@ -236,11 +252,11 @@ SOURCE=..\..\backend\reedsol.c
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\backend\render.c
+SOURCE=..\..\backend\rss.c
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\backend\rss.c
+SOURCE=..\..\backend\sjis.c
 # End Source File
 # Begin Source File
 
@@ -256,7 +272,15 @@ SOURCE=..\..\backend\tif.c
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\backend\ultra.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\backend\upcean.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\backend\vector.c
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -266,6 +290,14 @@ SOURCE=..\..\backend\upcean.c
 # Begin Group "Resource Files"
 
 # PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+# Begin Source File
+
+SOURCE=.\zint.rc
+# End Source File
+# Begin Source File
+
+SOURCE=.\zint_black_vc6.ico
+# End Source File
 # End Group
 # End Target
 # End Project

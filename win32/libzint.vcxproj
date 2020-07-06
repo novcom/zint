@@ -30,7 +30,6 @@
     <ProjectGuid>{5C08DC40-8F7D-475E-AA3C-814DED735A4B}</ProjectGuid>
     <RootNamespace>libzint_png_qr</RootNamespace>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LIB|Win32'" Label="Configuration">
@@ -104,7 +103,6 @@
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
-    <TargetName>zint</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -117,7 +115,7 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\extern\libpng\include;..\extern\zlib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";NO_PNG;BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <ExceptionHandling />
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -137,7 +135,7 @@
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
     <Link>
-      <AdditionalDependencies>libpng16d.lib;zlibd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)zintd.dll</OutputFile>
       <AdditionalLibraryDirectories>..\extern\libpng\lib\x86;..\extern\zlib\lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>libcmtd.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -150,7 +148,7 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\extern\libpng\include;..\extern\zlib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NO_PNG;WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ExceptionHandling>
       </ExceptionHandling>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -171,7 +169,7 @@
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
     <Link>
-      <AdditionalDependencies>libpng16d.lib;zlibd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>zlibd.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)zintd.dll</OutputFile>
       <AdditionalLibraryDirectories>..\extern\libpng\lib\x64;..\extern\zlib\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>libcmtd.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -184,7 +182,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <AdditionalIncludeDirectories>..\extern\libpng\include;..\extern\zlib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;NO_PNG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -211,7 +209,6 @@
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <TargetMachine>MachineX86</TargetMachine>
-      <ImportLibrary>$(OutDir)zint.lib</ImportLibrary>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -219,7 +216,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <AdditionalIncludeDirectories>..\extern\libpng\include;..\extern\zlib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;ZLIB_DLL;PNG_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.6.0";BUILD_ZINT_DLL;NO_PNG;ZLIB_DLL;PNG_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling>
       </ExceptionHandling>
@@ -322,6 +319,9 @@
     <ClCompile Include="..\backend\dotcode.c" />
     <ClCompile Include="..\backend\eci.c" />
     <ClCompile Include="..\backend\emf.c" />
+    <ClCompile Include="..\backend\gb18030.c" />
+    <ClCompile Include="..\backend\gb2312.c" />
+    <ClCompile Include="..\backend\general_field.c" />
     <ClCompile Include="..\backend\gif.c" />
     <ClCompile Include="..\backend\gridmtx.c" />
     <ClCompile Include="..\backend\gs1.c" />
@@ -329,6 +329,7 @@
     <ClCompile Include="..\backend\imail.c" />
     <ClCompile Include="..\backend\large.c" />
     <ClCompile Include="..\backend\library.c" />
+    <ClCompile Include="..\backend\mailmark.c" />
     <ClCompile Include="..\backend\maxicode.c" />
     <ClCompile Include="..\backend\medical.c" />
     <ClCompile Include="..\backend\pcx.c" />
@@ -340,12 +341,14 @@
     <ClCompile Include="..\backend\qr.c" />
     <ClCompile Include="..\backend\raster.c" />
     <ClCompile Include="..\backend\reedsol.c" />
-    <ClCompile Include="..\backend\render.c" />
     <ClCompile Include="..\backend\rss.c" />
+    <ClCompile Include="..\backend\sjis.c" />
     <ClCompile Include="..\backend\svg.c" />
     <ClCompile Include="..\backend\telepen.c" />
     <ClCompile Include="..\backend\tif.c" />
+    <ClCompile Include="..\backend\ultra.c" />
     <ClCompile Include="..\backend\upcean.c" />
+    <ClCompile Include="..\backend\vector.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\backend\aztec.h" />
@@ -361,6 +364,7 @@
     <ClInclude Include="..\backend\font.h" />
     <ClInclude Include="..\backend\gb18030.h" />
     <ClInclude Include="..\backend\gb2312.h" />
+    <ClInclude Include="..\backend\general_field.h" />
     <ClInclude Include="..\backend\gridmtx.h" />
     <ClInclude Include="..\backend\gs1.h" />
     <ClInclude Include="..\backend\hanxin.h" />
