@@ -30,7 +30,6 @@
  */
 /* vim: set ts=4 sw=4 et : */
 
-#include <string.h>
 #ifdef _MSC_VER
 #include <malloc.h>
 #endif
@@ -240,7 +239,7 @@ static void qr_cur_cost(unsigned int state[], const unsigned int jisdata[], cons
 static void qr_define_mode(char mode[], const unsigned int jisdata[], const size_t length, const int gs1, const int version, const int debug) {
     unsigned int state[11] = {
         0 /*N*/, 0 /*A*/, 0 /*B*/, 0 /*K*/,
-        version, gs1,
+        (unsigned int) version, (unsigned int) gs1,
         0 /*numeric_end*/, 0 /*numeric_cost*/, 0 /*alpha_end*/, 0 /*alpha_cost*/, 0 /*alpha_pcent*/
     };
 
@@ -692,17 +691,20 @@ static void add_ecc(unsigned char fullstream[], const unsigned char datastream[]
     qty_short_blocks = blocks - qty_long_blocks;
     ecc_block_length = ecc_cw / blocks;
 
+    /* Suppress some clang-tidy clang-analyzer-core.UndefinedBinaryOperatorResult/uninitialized.Assign warnings */
+    assert(short_data_block_length >= 0);
+    assert(ecc_block_length * blocks == ecc_cw);
 
 #ifndef _MSC_VER
-    unsigned char data_block[short_data_block_length + 2];
-    unsigned char ecc_block[ecc_block_length + 2];
-    unsigned char interleaved_data[data_cw + 2];
-    unsigned char interleaved_ecc[ecc_cw + 2];
+    unsigned char data_block[short_data_block_length + 1];
+    unsigned char ecc_block[ecc_block_length];
+    unsigned char interleaved_data[data_cw];
+    unsigned char interleaved_ecc[ecc_cw];
 #else
-    data_block = (unsigned char *) _alloca(short_data_block_length + 2);
-    ecc_block = (unsigned char *) _alloca(ecc_block_length + 2);
-    interleaved_data = (unsigned char *) _alloca(data_cw + 2);
-    interleaved_ecc = (unsigned char *) _alloca(ecc_cw + 2);
+    data_block = (unsigned char *) _alloca(short_data_block_length + 1);
+    ecc_block = (unsigned char *) _alloca(ecc_block_length);
+    interleaved_data = (unsigned char *) _alloca(data_cw);
+    interleaved_ecc = (unsigned char *) _alloca(ecc_cw);
 #endif
 
     posn = 0;
@@ -758,10 +760,10 @@ static void add_ecc(unsigned char fullstream[], const unsigned char datastream[]
     }
 
     for (j = 0; j < data_cw; j++) {
-        fullstream[j] = interleaved_data[j];
+        fullstream[j] = interleaved_data[j]; // NOLINT suppress clang-tidy warning: interleaved_data[data_cw] fully set
     }
     for (j = 0; j < ecc_cw; j++) {
-        fullstream[j + data_cw] = interleaved_ecc[j];
+        fullstream[j + data_cw] = interleaved_ecc[j]; // NOLINT suppress clang-tidy warning: interleaved_ecc[ecc_cw] fully set
     }
 
     if (debug & ZINT_DEBUG_PRINT) {
@@ -900,7 +902,7 @@ static void populate_grid(unsigned char* grid, const int h_size, const int v_siz
     n = cw * 8;
     y = v_size - 1;
     i = 0;
-    do {
+    while (i < n) {
         int x = (h_size - 2) - (row * 2);
 
         if ((x < 6) && (v_size == h_size))
@@ -943,7 +945,7 @@ static void populate_grid(unsigned char* grid, const int h_size, const int v_siz
             y = v_size - 1;
             direction = 1;
         }
-    } while (i < n);
+    }
 }
 
 #ifdef ZINTLOG
@@ -987,6 +989,8 @@ static int evaluate(unsigned char *eval,const int size,const int pattern) {
     char* local = (char *) _alloca((size * size) * sizeof (char));
 #endif
 
+    /* Suppresses clang-tidy clang-analyzer-core.UndefinedBinaryOperatorResult warnings */
+    assert(size > 0);
 
 #ifdef ZINTLOG
     write_log("");

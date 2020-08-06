@@ -1,6 +1,6 @@
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2019 - 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -34,21 +34,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void test_checks(void)
-{
+static void test_checks(int index, int debug) {
+
     testStart("");
 
     int ret;
     struct item {
         int symbology;
-        unsigned char* data;
+        unsigned char *data;
         int length;
         int input_mode;
         int eci;
         float dot_size;
         int ret;
 
-        char* expected;
+        char *expected;
     };
     // s/\/\*[ 0-9]*\*\//\=printf("\/*%2d*\/", line(".") - line("'<"))
     struct item data[] = {
@@ -58,20 +58,22 @@ static void test_checks(void)
         /* 3*/ { BARCODE_QRCODE, "1234", -1, -1, 999999 + 1, -1, ZINT_ERROR_INVALID_OPTION, "Error 218: Invalid ECI mode" },
         /* 4*/ { BARCODE_CODE128, "1234", -1, -1, -1, 20.1, ZINT_ERROR_INVALID_OPTION, "Error 221: Invalid dot size" },
         /* 5*/ { BARCODE_CODE128, "1234", -1, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_OPTION, "Error 220: Selected symbology does not support GS1 mode" },
-        /* 6*/ { BARCODE_EAN128, "[21]12\0004", 8, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 262: NUL characters not permitted in GS1 mode" },
-        /* 7*/ { BARCODE_EAN128, "[21]12é4", -1, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 250: Extended ASCII characters are not supported by GS1" },
-        /* 8*/ { BARCODE_EAN128, "[21]12\0074", -1, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 251: Control characters are not supported by GS1" },
-        /* 9*/ { BARCODE_EAN128, "[21]1234", -1, GS1_MODE, -1, -1, 0, "" },
+        /* 6*/ { BARCODE_GS1_128, "[21]12\0004", 8, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 262: NUL characters not permitted in GS1 mode" },
+        /* 7*/ { BARCODE_GS1_128, "[21]12é4", -1, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 250: Extended ASCII characters are not supported by GS1" },
+        /* 8*/ { BARCODE_GS1_128, "[21]12\0074", -1, GS1_MODE, -1, -1, ZINT_ERROR_INVALID_DATA, "Error 251: Control characters are not supported by GS1" },
+        /* 9*/ { BARCODE_GS1_128, "[21]1234", -1, GS1_MODE, -1, -1, 0, "" },
     };
     int data_size = sizeof(data) / sizeof(struct item);
 
-    char* text;
-    char* primary;
+    char *text;
+    char *primary;
     char escaped_primary[1024];
 
     for (int i = 0; i < data_size; i++) {
 
-        struct zint_symbol* symbol = ZBarcode_Create();
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
         symbol->symbology = data[i].symbology;
@@ -84,6 +86,8 @@ static void test_checks(void)
         if (data[i].dot_size != -1) {
             symbol->dot_size = data[i].dot_size;
         }
+        symbol->debug |= debug;
+
         int length = data[i].length == -1 ? (int) strlen(data[i].data) : data[i].length;
 
         ret = ZBarcode_Encode(symbol, data[i].data, length);
@@ -98,13 +102,13 @@ static void test_checks(void)
     testFinish();
 }
 
-static void test_input_mode(void)
-{
+static void test_input_mode(int index, int debug) {
+
     testStart("");
 
     int ret;
     struct item {
-        unsigned char* data;
+        unsigned char *data;
         int input_mode;
         int ret;
 
@@ -128,11 +132,14 @@ static void test_input_mode(void)
 
     for (int i = 0; i < data_size; i++) {
 
-        struct zint_symbol* symbol = ZBarcode_Create();
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
         symbol->symbology = BARCODE_CODE49; // Supports GS1
         symbol->input_mode = data[i].input_mode;
+        symbol->debug |= debug;
 
         int length = strlen(data[i].data);
 
@@ -146,16 +153,73 @@ static void test_input_mode(void)
     testFinish();
 }
 
+static void test_escape_char_process(int index, int generate, int debug) {
+
+    testStart("");
+
+    int ret;
+    struct item {
+        int input_mode;
+        unsigned char *data;
+        int ret;
+        int expected_width;
+        char *expected;
+        char *comment;
+    };
+    struct item data[] = {
+        /*  0*/ { DATA_MODE, "\\0\\E\\a\\b\\t\\n\\v\\f\\r\\e\\G\\R\\x81\\\\", 0, 200, "(18) 103 64 68 71 72 73 74 75 76 77 91 93 94 101 65 60 44 106", "" },
+        /*  1*/ { DATA_MODE, "\\c", ZINT_ERROR_INVALID_DATA, 0, "Error 234: Unrecognised escape character in input data", "" },
+        /*  2*/ { DATA_MODE, "\\", ZINT_ERROR_INVALID_DATA, 0, "Error 236: Incomplete escape character in input data", "" },
+        /*  3*/ { DATA_MODE, "\\x", ZINT_ERROR_INVALID_DATA, 0, "Error 232: Incomplete escape character in input data", "" },
+        /*  4*/ { DATA_MODE, "\\x1", ZINT_ERROR_INVALID_DATA, 0, "Error 232: Incomplete escape character in input data", "" },
+        /*  5*/ { DATA_MODE, "\\x1g", ZINT_ERROR_INVALID_DATA, 0, "Error 233: Corrupt escape character in input data", "" },
+        /*  6*/ { UNICODE_MODE, "\\xA01\\xFF", 0, 90, "(8) 104 100 0 17 100 95 100 106", "" },
+    };
+    int data_size = ARRAY_SIZE(data);
+
+    char escaped[1024];
+
+    for (int i = 0; i < data_size; i++) {
+
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
+        assert_nonnull(symbol, "Symbol not created\n");
+
+        symbol->debug = ZINT_DEBUG_TEST; // Needed to get codeword dump in errtxt
+
+        int length = testUtilSetSymbol(symbol, BARCODE_CODE128, data[i].input_mode | ESCAPE_MODE, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
+
+        ret = ZBarcode_Encode(symbol, data[i].data, length);
+        assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
+
+        if (generate) {
+            printf("        /*%3d*/ { %s, \"%s\", %s, %d, \"%s\", \"%s\" },\n",
+                    i, testUtilInputModeName(data[i].input_mode), testUtilEscape(data[i].data, length, escaped, sizeof(escaped)),
+                    testUtilErrorName(data[i].ret), symbol->width, symbol->errtxt, data[i].comment);
+        } else {
+            if (ret < 5) {
+                assert_equal(symbol->width, data[i].expected_width, "i:%d symbol->width %d != %d (%s)\n", i, symbol->width, data[i].expected_width, data[i].data);
+                assert_zero(strcmp(symbol->errtxt, data[i].expected), "i:%d strcmp(%s, %s) != 0\n", i, symbol->errtxt, data[i].expected);
+            }
+        }
+
+        ZBarcode_Delete(symbol);
+    }
+
+    testFinish();
+}
+
 // #181 Nico Gunkel OSS-Fuzz
-static void test_encode_file_zero_length(void)
-{
+static void test_encode_file_zero_length(void) {
+
     testStart("");
 
     int ret;
     char filename[] = "in.bin";
     int fd;
 
-    struct zint_symbol* symbol = ZBarcode_Create();
+    struct zint_symbol *symbol = ZBarcode_Create();
     assert_nonnull(symbol, "Symbol not created\n");
 
     (void)remove(filename); // In case junk hanging around
@@ -174,15 +238,15 @@ static void test_encode_file_zero_length(void)
 }
 
 // #181 Nico Gunkel OSS-Fuzz (buffer not freed on fread() error) Note: unable to reproduce fread() error using this method
-static void test_encode_file_directory(void)
-{
+static void test_encode_file_directory(void) {
+
     testStart("");
 
     int ret;
     char dirname[] = "in_dir";
     int fd;
 
-    struct zint_symbol* symbol = ZBarcode_Create();
+    struct zint_symbol *symbol = ZBarcode_Create();
     assert_nonnull(symbol, "Symbol not created\n");
 
     (void)rmdir(dirname); // In case junk hanging around
@@ -198,12 +262,17 @@ static void test_encode_file_directory(void)
     testFinish();
 }
 
-int main()
-{
-    test_checks();
-    test_input_mode();
-    test_encode_file_zero_length();
-    test_encode_file_directory();
+int main(int argc, char *argv[]) {
+
+    testFunction funcs[] = { /* name, func, has_index, has_generate, has_debug */
+        { "test_checks", test_checks, 1, 0, 1 },
+        { "test_input_mode", test_input_mode, 1, 0, 1 },
+        { "test_escape_char_process", test_escape_char_process, 1, 1, 1 },
+        { "test_encode_file_zero_length", test_encode_file_zero_length, 0, 0, 0 },
+        { "test_encode_file_directory", test_encode_file_directory, 0, 0, 0 },
+    };
+
+    testRun(argc, argv, funcs, ARRAY_SIZE(funcs));
 
     testReport();
 

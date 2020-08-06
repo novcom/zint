@@ -31,7 +31,6 @@
  */
 /* vim: set ts=4 sw=4 et : */
 
-#include <string.h>
 #include <stdio.h>
 #ifdef _MSC_VER
 #include <malloc.h>
@@ -69,6 +68,18 @@ static void itostr(char ai_string[], int ai_value) {
     strcat(ai_string, ")");
 }
 
+/* Returns the number of times a character occurs in a string */
+static int ustrchr_cnt(const unsigned char string[], const size_t length, const unsigned char c) {
+    int count = 0;
+    unsigned int i;
+    for (i = 0; i < length; i++) {
+        if (string[i] == c) {
+            count++;
+        }
+    }
+    return count;
+}
+
 INTERNAL int gs1_verify(struct zint_symbol *symbol, const unsigned char source[], const size_t src_len, char reduced[]) {
     int i, j, last_ai, ai_latch;
     char ai_string[7]; /* 6 char max "(NNNN)" */
@@ -103,6 +114,10 @@ INTERNAL int gs1_verify(struct zint_symbol *symbol, const unsigned char source[]
         }
         if (source[i] < 32) {
             strcpy(symbol->errtxt, "251: Control characters are not supported by GS1");
+            return ZINT_ERROR_INVALID_DATA;
+        }
+        if (source[i] == 127) {
+            strcpy(symbol->errtxt, "263: DEL characters are not supported by GS1");
             return ZINT_ERROR_INVALID_DATA;
         }
     }
@@ -490,7 +505,7 @@ INTERNAL int gs1_verify(struct zint_symbol *symbol, const unsigned char source[]
         }
         
         if (ai_value[i] == 253) { // GDTI
-            if ((data_length[i] < 14) || (data_length[i] > 30)) {
+            if ((data_length[i] < 13) || (data_length[i] > 30)) {
                 error_latch = 1;
             } else {
                 error_latch = 0;
@@ -498,7 +513,7 @@ INTERNAL int gs1_verify(struct zint_symbol *symbol, const unsigned char source[]
         }
         
         if (ai_value[i] == 255) { // GCN
-            if ((data_length[i] < 14) || (data_length[i] > 25)) {
+            if ((data_length[i] < 13) || (data_length[i] > 25)) {
                 error_latch = 1;
             } else {
                 error_latch = 0;
@@ -659,7 +674,6 @@ INTERNAL int gs1_verify(struct zint_symbol *symbol, const unsigned char source[]
 
     /* Resolve AI data - put resulting string in 'reduced' */
     j = 0;
-    last_ai = 0;
     ai_latch = 1;
     for (i = 0; i < (int) src_len; i++) {
         if ((source[i] != '[') && (source[i] != ']')) {

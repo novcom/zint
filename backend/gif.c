@@ -2,7 +2,7 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2009-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2009 - 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -32,7 +32,6 @@
 /* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "common.h"
 #include <math.h>
@@ -43,13 +42,6 @@
 #endif
 
 #define SSET    "0123456789ABCDEF"
-
-/* Index of transparent color, -1 for no transparent color
- * This might be set into a variable if transparency is activated as an option
- */
-#define TRANSPARENT_INDEX (-1)
-
-#include <stdlib.h>
 
 typedef struct s_statestruct {
     unsigned char * pOut;
@@ -67,6 +59,7 @@ typedef struct s_statestruct {
     unsigned char NodePix[4096];
     unsigned char colourCode[10];
     unsigned char colourPaletteIndex[10];
+    int colourCount;
 } statestruct;
 
 /* Transform a Pixel to a lzw colourmap index and move to next pixel.
@@ -79,11 +72,12 @@ static unsigned char NextPaletteIndex(statestruct *pState)
     pixelColour = *(pState->pIn);
     (pState->pIn)++;
     (pState->InLen)--;
-    for (colourIndex = 0;; colourIndex++) {
+    for (colourIndex = 0; colourIndex < pState->colourCount; colourIndex++) {
         if (pixelColour == pState->colourCode[colourIndex])
             return pState->colourPaletteIndex[colourIndex];
 
     }
+    return 0; /* Not reached */
 }
 
 
@@ -291,6 +285,8 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     int paletteBitSize;
     int paletteSize;
     statestruct State;
+    int transparent_index;
+    int bgindex = -1, fgindex = -1;
 
     unsigned char backgroundColourIndex;
     unsigned char RGBCur[3];
@@ -301,14 +297,16 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
 
     unsigned char pixelColour;
 
+    /* Allow for overhead of 4 == code size + byte count + overflow byte + zero terminator */
+    unsigned int lzoutbufSize = symbol->bitmap_height * symbol->bitmap_width + 4;
 #ifdef _MSC_VER
     char * lzwoutbuf;
 #endif
 
 #ifndef _MSC_VER
-    char lzwoutbuf[symbol->bitmap_height * symbol->bitmap_width];
+    char lzwoutbuf[lzoutbufSize];
 #else
-    lzwoutbuf = (char *) _alloca((symbol->bitmap_height * symbol->bitmap_width) * sizeof (char));
+    lzwoutbuf = (char *) _alloca(lzoutbufSize);
 #endif /* _MSC_VER */
 
     /* Open output file in binary mode */
@@ -438,12 +436,34 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
             paletteRGB[paletteIndex][2] = RGBCur[2];
 
             paletteCount++;
+
+            if (pixelColour == '0') bgindex = paletteIndex;
+            if (pixelColour == '1') fgindex = paletteIndex;
         }
         /* Add palette index to current colour code */
         (State.colourCode)[colourCount] = pixelColour;
         (State.colourPaletteIndex)[colourCount] = paletteIndex;
         colourCount++;
     }
+    State.colourCount = colourCount;
+
+    /* Set transparency */
+    /* Note: does not allow both transparent foreground and background -
+     * background takes prioroty */
+    transparent_index = -1;
+    if (strlen(symbol->fgcolour) > 6) {
+        if ((symbol->fgcolour[6] == '0') && (symbol->fgcolour[7] == '0')) {
+            // Transparent foreground
+            transparent_index = fgindex;
+        }
+    }
+    if (strlen(symbol->bgcolour) > 6) {
+        if ((symbol->bgcolour[6] == '0') && (symbol->bgcolour[7] == '0')) {
+            // Transparent background
+            transparent_index = bgindex;
+        }
+    }
+
     /* find palette bit size from palette size*/
 
     /* 1,2 -> 1, 3,4 ->2, 5,6,7,8->3 */
@@ -462,7 +482,7 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
 
     /* GIF signature (6) */
     memcpy(outbuf, "GIF87a", 6);
-    if (TRANSPARENT_INDEX != -1)
+    if (transparent_index != -1)
         outbuf[4] = '9';
 
     fwrite(outbuf, 6, 1, gif_file);
@@ -513,7 +533,7 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     /* A graphic control extension block is used for overlay gifs.
      * This is necessary to define a transparent color.
      */
-    if (TRANSPARENT_INDEX != -1) {
+    if (transparent_index != -1) {
         /* Extension Introducer = '!' */
         outbuf[0] = '\x21';
         /* Graphic Control Label */
@@ -531,7 +551,7 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
         outbuf[4] = 0;
         outbuf[5] = 0;
         /* Transparent Color Index */
-        outbuf[6] = (unsigned char) TRANSPARENT_INDEX;
+        outbuf[6] = (unsigned char) transparent_index;
         /* Block Terminator */
         outbuf[7] = 0;
         fwrite(outbuf, 8, 1, gif_file);
@@ -563,7 +583,7 @@ INTERNAL int gif_pixel_plot(struct zint_symbol *symbol, char *pixelbuf) {
     State.pIn = (unsigned char *) pixelbuf;
     State.InLen = symbol->bitmap_height * symbol->bitmap_width;
     State.pOut = (unsigned char *) lzwoutbuf;
-    State.OutLength = symbol->bitmap_height * symbol->bitmap_width;
+    State.OutLength = lzoutbufSize;
 
     /* call lzw encoding */
     byte_out = gif_lzw(&State, paletteBitSize);

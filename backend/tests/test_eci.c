@@ -1,6 +1,6 @@
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2019 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2019 - 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -31,17 +31,18 @@
 
 #include "testcommon.h"
 
-static void test_bom(void)
-{
+static void test_bom(int debug) {
+
     testStart("");
 
-    struct zint_symbol* symbol = ZBarcode_Create();
+    struct zint_symbol *symbol = ZBarcode_Create();
     assert_nonnull(symbol, "Symbol not created\n");
 
     symbol->symbology = BARCODE_QRCODE;
     symbol->input_mode = UNICODE_MODE;
     symbol->option_1 = 4;
     symbol->option_2 = 1;
+    symbol->debug |= debug;
 
     char data[] = "\xEF\xBB\xBF‹"; // U+FEFF BOM, with U+2039 (only in Windows pages)
     int length = strlen(data);
@@ -83,15 +84,16 @@ static void test_bom(void)
     testFinish();
 }
 
-static void test_iso_8859_16(void)
-{
+static void test_iso_8859_16(int debug) {
+
     testStart("");
 
-    struct zint_symbol* symbol = ZBarcode_Create();
+    struct zint_symbol *symbol = ZBarcode_Create();
     assert_nonnull(symbol, "Symbol not created\n");
 
     symbol->symbology = BARCODE_QRCODE;
     symbol->input_mode = UNICODE_MODE;
+    symbol->debug |= debug;
 
     char data[] = "Ț"; // U+021A only in ISO 8859-16
     int length = strlen(data);
@@ -107,8 +109,8 @@ static void test_iso_8859_16(void)
 }
 
 // Only testing standard non-extended barcodes here, ie not QRCODE, MICROQR, GRIDMATRIX, HANXIN or UPNQR
-static void test_reduced_charset_input(void)
-{
+static void test_reduced_charset_input(int index, int debug) {
+
     testStart("");
 
     int ret;
@@ -116,10 +118,10 @@ static void test_reduced_charset_input(void)
         int symbology;
         int input_mode;
         int eci;
-        unsigned char* data;
+        unsigned char *data;
         int ret;
         int expected_eci;
-        char* comment;
+        char *comment;
     };
     // é U+00E9 in ISO 8859-1 plus other ISO 8859 (but not in ISO 8859-7 or ISO 8859-11), Win 1250 plus other Win, not in Shift JIS
     // β U+03B2 in ISO 8859-7 Greek (but not other ISO 8859 or Win page), in Shift JIS
@@ -131,11 +133,11 @@ static void test_reduced_charset_input(void)
     // s/\/\*[ 0-9]*\*\//\=printf("\/*%3d*\/", line(".") - line("'<"))
     struct item data[] = {
         /*  0*/ { BARCODE_CODE11, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
-        /*  1*/ { BARCODE_C25MATRIX, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
+        /*  1*/ { BARCODE_C25STANDARD, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
         /*  2*/ { BARCODE_CODE39, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
         /*  3*/ { BARCODE_EXCODE39, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII only" },
         /*  4*/ { BARCODE_EANX, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
-        /*  5*/ { BARCODE_CODABAR, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
+        /*  5*/ { BARCODE_CODABAR, UNICODE_MODE, 0, "AéB", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
         /*  6*/ { BARCODE_CODE128, UNICODE_MODE, 0, "é", 0, 0, "" },
         /*  7*/ { BARCODE_CODE128, UNICODE_MODE, 3, "é", ZINT_ERROR_INVALID_OPTION, -1, "Does not support ECI" },
         /*  8*/ { BARCODE_CODE128, UNICODE_MODE, 0, "β", ZINT_ERROR_INVALID_DATA, -1, "β not in ISO 8859-1" },
@@ -146,8 +148,8 @@ static void test_reduced_charset_input(void)
         /* 13*/ { BARCODE_CODE49, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII only" },
         /* 14*/ { BARCODE_CODE93, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
         /* 15*/ { BARCODE_FLAT, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
-        /* 16*/ { BARCODE_RSS14, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
-        /* 17*/ { BARCODE_RSS_EXP, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
+        /* 16*/ { BARCODE_DBAR_OMN, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers only" },
+        /* 17*/ { BARCODE_DBAR_EXP, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
         /* 18*/ { BARCODE_LOGMARS, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "ASCII subset only" },
         /* 19*/ { BARCODE_PDF417, UNICODE_MODE, 0, "é", 0, 0, "" },
         /* 20*/ { BARCODE_PDF417, UNICODE_MODE, 3, "é", 0, 3, "Supports ECI" },
@@ -164,11 +166,11 @@ static void test_reduced_charset_input(void)
         /* 31*/ { BARCODE_PDF417, UNICODE_MODE, 20, "テ", ZINT_ERROR_INVALID_DATA, -1, "テ in ECI 20 but that conversion not currently supported in Zint for non-extended barcodes" },
         /* 32*/ { BARCODE_PDF417, UNICODE_MODE, 900, "é", 0, 900, "ECI > 899 ignored for character set conversion" },
         /* 33*/ { BARCODE_PDF417, UNICODE_MODE, 900, "β", ZINT_ERROR_INVALID_DATA, 900, "But ECI > 899 suppresses auto-ECI `get_best_eci()`" },
-        /* 34*/ { BARCODE_PDF417TRUNC, UNICODE_MODE, 0, "é", 0, 0, "" },
-        /* 35*/ { BARCODE_PDF417TRUNC, UNICODE_MODE, 3, "é", 0, 3, "Supports ECI" },
-        /* 36*/ { BARCODE_PDF417TRUNC, UNICODE_MODE, 0, "β", ZINT_WARN_USES_ECI, 9, "" },
-        /* 37*/ { BARCODE_PDF417TRUNC, UNICODE_MODE, 9, "β", 0, 9, "" },
-        /* 38*/ { BARCODE_PDF417TRUNC, UNICODE_MODE, 26, "テ", 0, 26, "" },
+        /* 34*/ { BARCODE_PDF417COMP, UNICODE_MODE, 0, "é", 0, 0, "" },
+        /* 35*/ { BARCODE_PDF417COMP, UNICODE_MODE, 3, "é", 0, 3, "Supports ECI" },
+        /* 36*/ { BARCODE_PDF417COMP, UNICODE_MODE, 0, "β", ZINT_WARN_USES_ECI, 9, "" },
+        /* 37*/ { BARCODE_PDF417COMP, UNICODE_MODE, 9, "β", 0, 9, "" },
+        /* 38*/ { BARCODE_PDF417COMP, UNICODE_MODE, 26, "テ", 0, 26, "" },
         /* 39*/ { BARCODE_MAXICODE, UNICODE_MODE, 0, "é", 0, 0, "" },
         /* 40*/ { BARCODE_MAXICODE, UNICODE_MODE, 3, "é", 0, 3, "Supports ECI" },
         /* 41*/ { BARCODE_MAXICODE, UNICODE_MODE, 0, "β", ZINT_WARN_USES_ECI, 9, "" },
@@ -191,7 +193,7 @@ static void test_reduced_charset_input(void)
         /* 58*/ { BARCODE_MICROPDF417, UNICODE_MODE, 0, "β", ZINT_WARN_USES_ECI, 9, "" },
         /* 59*/ { BARCODE_MICROPDF417, UNICODE_MODE, 9, "β", 0, 9, "" },
         /* 60*/ { BARCODE_MICROPDF417, UNICODE_MODE, 26, "テ", 0, 26, "" },
-        /* 61*/ { BARCODE_ONECODE, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers/dash only" },
+        /* 61*/ { BARCODE_USPS_IMAIL, UNICODE_MODE, 0, "é", ZINT_ERROR_INVALID_DATA, -1, "Numbers/dash only" },
         /* 62*/ { BARCODE_AZTEC, UNICODE_MODE, 0, "é", 0, 0, "" },
         /* 63*/ { BARCODE_AZTEC, UNICODE_MODE, 3, "é", 0, 3, "Supports ECI" },
         /* 64*/ { BARCODE_AZTEC, UNICODE_MODE, 0, "β", ZINT_WARN_USES_ECI, 9, "" },
@@ -214,12 +216,15 @@ static void test_reduced_charset_input(void)
 
     for (int i = 0; i < data_size; i++) {
 
-        struct zint_symbol* symbol = ZBarcode_Create();
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
         symbol->symbology = data[i].symbology;
         symbol->input_mode = data[i].input_mode;
         symbol->eci = data[i].eci;
+        symbol->debug |= debug;
 
         int length = strlen(data[i].data);
 
@@ -236,11 +241,15 @@ static void test_reduced_charset_input(void)
     testFinish();
 }
 
-int main()
-{
-    test_bom();
-    test_iso_8859_16();
-    test_reduced_charset_input();
+int main(int argc, char *argv[]) {
+
+    testFunction funcs[] = { /* name, func, has_index, has_generate, has_debug */
+        { "test_bom", test_bom, 0, 0, 1 },
+        { "test_iso_8859_16", test_iso_8859_16, 0, 0, 1 },
+        { "test_reduced_charset_input", test_reduced_charset_input, 1, 0, 1 },
+    };
+
+    testRun(argc, argv, funcs, ARRAY_SIZE(funcs));
 
     testReport();
 

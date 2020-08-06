@@ -29,12 +29,10 @@
  */
 /* vim: set ts=4 sw=4 et : */
 
-//#define TEST_ENCODE_GENERATE_EXPECTED 1
-
 #include "testcommon.h"
 
-static void test_encode(void)
-{
+static void test_encode(int index, int generate, int debug) {
+
     testStart("");
 
     int ret;
@@ -43,13 +41,13 @@ static void test_encode(void)
         int input_mode;
         int option_1;
         int option_2;
-        unsigned char* data;
+        unsigned char *data;
         int ret;
 
         int expected_rows;
         int expected_width;
-        char* comment;
-        char* expected;
+        char *comment;
+        char *expected;
     };
     struct item data[] = {
         /*  0*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "123456789012", 0, 15, 15, "ISO/IEC 24778:2008 Figure 1 (left)",
@@ -68,7 +66,7 @@ static void test_encode(void)
                     "110001010010001"
                     "101011110101010"
                     "100010001000101"
-               },
+                },
         /*  1*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "Aztec Code is a public domain 2D matrix barcode symbology of nominally square symbols built on a square grid with a distinctive square bullseye pattern at their center.", 0, 41, 41, "ISO/IEC 24778:2008 Figure 1 (right) NOTE: Not the same but down to single encoding mode difference (UPPER space rather than LOWER space after 2D)",
                     "00001100110010010010111000010100001011000"
                     "01000110010110110001000000100101101000001"
@@ -111,7 +109,7 @@ static void test_encode(void)
                     "10101101110100001100111100110101001010001"
                     "00010010010011001011011010000110001000101"
                     "10001000001010100110100000001001001110000"
-               },
+                },
         /*  2*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "Code 2D!", 0, 15, 15, "ISO/IEC 24778:2008 Figure G.2",
                     "000110001100000"
                     "000000110000010"
@@ -128,8 +126,25 @@ static void test_encode(void)
                     "010001100010010"
                     "011000011011010"
                     "111001101100000"
-               },
-        /*  3*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", 0, 53, 53, "**NOT SAME** ISO/IEC 24778:2008 Figure I.1 (left) TODO: investigate",
+                },
+        /*  3*/ { BARCODE_AZTEC, UNICODE_MODE, -1, 1, "Code 2D!", 0, 15, 15, "ISO/IEC 24778:2008 Figure G.2; specify size",
+                    "000110001100000"
+                    "000000110000010"
+                    "101100001000101"
+                    "011111111111100"
+                    "111100000001101"
+                    "000101111101100"
+                    "100101000101111"
+                    "001101010101001"
+                    "001101000101010"
+                    "010101111101001"
+                    "100100000001011"
+                    "100111111111101"
+                    "010001100010010"
+                    "011000011011010"
+                    "111001101100000"
+                },
+        /*  4*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", 0, 53, 53, "**NOT SAME** ISO/IEC 24778:2008 Figure I.1 (left) TODO: investigate",
                     "00010101011010101010101010110101010101010110101010101"
                     "00101010100101010101010101001010101010101001010101010"
                     "11100101011010101010101010110101010101010110101010110"
@@ -183,8 +198,8 @@ static void test_encode(void)
                     "01101010101101010101010101101010101010101011010100101"
                     "01010101010010101010101010010101010101010100101010110"
                     "10101010101101010101010101101010101010101011010101001"
-               },
-        /*  4*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333", 0, 53, 53, "**NOT SAME** ISO/IEC 24778:2008 Figure I.1 (right) TODO: investigate",
+                },
+        /*  5*/ { BARCODE_AZTEC, UNICODE_MODE, -1, -1, "3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333", 0, 53, 53, "**NOT SAME** ISO/IEC 24778:2008 Figure I.1 (right) TODO: investigate",
                     "00111111111111111111111111111111111111111111111111111"
                     "00000000000000000000000000000000000000000000000000000"
                     "11101111111111111111111111111111111111111111111111101"
@@ -238,8 +253,8 @@ static void test_encode(void)
                     "10111111111111111111111111111111111111111111111110101"
                     "00000000000000000000000000000000000000000000000000001"
                     "11111111111111111111111111111111111111111111111111101"
-               },
-        /*  5*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]03453120000011[17]120508[10]ABCD1234[410]9501101020917", 0, 23, 23, "#189 Follow embedded FLG(n) with FLG(0)",
+                },
+        /*  6*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]03453120000011[17]120508[10]ABCD1234[410]9501101020917", 0, 23, 23, "#189 Follow embedded FLG(n) with FLG(0)",
                     "00100000101111000100100"
                     "00011101100110001010000"
                     "00000111000111101011011"
@@ -263,8 +278,8 @@ static void test_encode(void)
                     "11000101000100100000100"
                     "00010001010101010101011"
                     "11101100000000000010110"
-               },
-        /*  6*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]95012345678903[3103]000123", 0, 19, 19, "#189 Follow embedded FLG(n) with FLG(0)",
+                },
+        /*  7*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]95012345678903[3103]000123", 0, 19, 19, "#189 Follow embedded FLG(n) with FLG(0)",
                     "0000000100001010101"
                     "0001101111011000000"
                     "0111100100010110100"
@@ -284,8 +299,8 @@ static void test_encode(void)
                     "0111000111101011001"
                     "1000110111011000101"
                     "1010100000101101001"
-               },
-        /*  7*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]04610044273252[21]LRFX)k<C7ApWJ[91]003A[92]K8rNAqdvjmdxsmCVuj3FhaoNzQuq7Uff0sHXfz1TT/doiMaGQqNF+VPwMvwVbm1fxjzuDt6jxLCcc8o/tqbEDA==", 0, 45, 45, "#189 Follow embedded FLG(n) with FLG(0)",
+                },
+        /*  8*/ { BARCODE_AZTEC, GS1_MODE, -1, -1, "[01]04610044273252[21]LRFX)k<C7ApWJ[91]003A[92]K8rNAqdvjmdxsmCVuj3FhaoNzQuq7Uff0sHXfz1TT/doiMaGQqNF+VPwMvwVbm1fxjzuDt6jxLCcc8o/tqbEDA==", 0, 45, 45, "#189 Follow embedded FLG(n) with FLG(0)",
                     "000000101110011010101010010110011000001010111"
                     "000110001111011100111101101110110000000000011"
                     "001000101100101011000011111111101110111010101"
@@ -331,8 +346,29 @@ static void test_encode(void)
                     "101101111001110100000011101110110100011101011"
                     "000011010110101110000101110100000111000011010"
                     "101001110101010110100011010010001111001101101"
-               },
-        /*  8*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "0", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (1st)",
+                },
+        /*  9*/ { BARCODE_HIBC_AZTEC, UNICODE_MODE, -1, -1, "H123ABC01234567890", 0, 19, 19, "**NOT SAME** ANSI/HIBC 2.6 - 2016 Figure C1 TODO: investigate",
+                    "0001100111110111011"
+                    "0010111100111110001"
+                    "0111011000010101001"
+                    "1010010100011110000"
+                    "0010110101001010011"
+                    "0110111111111110001"
+                    "0110110000000101001"
+                    "0011110111110111001"
+                    "1101010100010101010"
+                    "1111010101010100101"
+                    "1011110100010111000"
+                    "0011110111110100101"
+                    "1101010000000101011"
+                    "0101011111111110110"
+                    "0000000000010001101"
+                    "0111000100111000010"
+                    "0101000000100011010"
+                    "1001001001100001110"
+                    "1100001010110101000"
+                },
+        /* 10*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "0", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (1st)",
                     "11101010101"
                     "11111111111"
                     "01000000010"
@@ -344,8 +380,8 @@ static void test_encode(void)
                     "01000000010"
                     "01111111111"
                     "00101010100"
-               },
-        /*  9*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "25", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (2nd)",
+                },
+        /* 11*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "25", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (2nd)",
                     "11101100101"
                     "11111111111"
                     "01000000011"
@@ -357,8 +393,8 @@ static void test_encode(void)
                     "11000000011"
                     "01111111111"
                     "00100100000"
-               },
-        /* 10*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "125", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (3rd)",
+                },
+        /* 12*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "125", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (3rd)",
                     "11110101101"
                     "11111111111"
                     "11000000011"
@@ -370,8 +406,8 @@ static void test_encode(void)
                     "11000000010"
                     "01111111111"
                     "00111101000"
-               },
-        /* 11*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "255", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (4th)",
+                },
+        /* 13*/ { BARCODE_AZRUNE, UNICODE_MODE, -1, -1, "255", 0, 11, 11, "ISO/IEC 24778:2008 Figure A.1 (4th)",
                     "11110101001"
                     "11111111111"
                     "01000000011"
@@ -383,7 +419,7 @@ static void test_encode(void)
                     "11000000010"
                     "01111111111"
                     "00110011100"
-               },
+                },
     };
     int data_size = sizeof(data) / sizeof(struct item);
 
@@ -391,7 +427,9 @@ static void test_encode(void)
 
     for (int i = 0; i < data_size; i++) {
 
-        struct zint_symbol* symbol = ZBarcode_Create();
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
         symbol->symbology = data[i].symbology;
@@ -402,31 +440,31 @@ static void test_encode(void)
         if (data[i].option_2 != -1) {
             symbol->option_2 = data[i].option_2;
         }
-        //symbol->debug = ZINT_DEBUG_PRINT;
+        symbol->debug |= debug;
 
         int length = strlen(data[i].data);
 
         ret = ZBarcode_Encode(symbol, data[i].data, length);
         assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
 
-        #ifdef TEST_ENCODE_GENERATE_EXPECTED
-        printf("        /*%3d*/ { %s, %s, %d, %d, \"%s\", %s, %d, %d, \"%s\",\n",
-                i, testUtilBarcodeName(data[i].symbology), testUtilInputModeName(data[i].input_mode), data[i].option_1, data[i].option_2,
-                testUtilEscape(data[i].data, length, escaped, sizeof(escaped)), testUtilErrorName(data[i].ret), symbol->rows, symbol->width, data[i].comment);
-        testUtilModulesDump(symbol, "                    ", "\n");
-        printf("               },\n");
-        #else
-        if (ret < 5) {
-            assert_equal(symbol->rows, data[i].expected_rows, "i:%d symbol->rows %d != %d (%s)\n", i, symbol->rows, data[i].expected_rows, data[i].data);
-            assert_equal(symbol->width, data[i].expected_width, "i:%d symbol->width %d != %d (%s)\n", i, symbol->width, data[i].expected_width, data[i].data);
+        if (generate) {
+            printf("        /*%3d*/ { %s, %s, %d, %d, \"%s\", %s, %d, %d, \"%s\",\n",
+                    i, testUtilBarcodeName(data[i].symbology), testUtilInputModeName(data[i].input_mode), data[i].option_1, data[i].option_2,
+                    testUtilEscape(data[i].data, length, escaped, sizeof(escaped)), testUtilErrorName(data[i].ret), symbol->rows, symbol->width, data[i].comment);
+            testUtilModulesDump(symbol, "                    ", "\n");
+            printf("                },\n");
+        } else {
+            if (ret < 5) {
+                assert_equal(symbol->rows, data[i].expected_rows, "i:%d symbol->rows %d != %d (%s)\n", i, symbol->rows, data[i].expected_rows, data[i].data);
+                assert_equal(symbol->width, data[i].expected_width, "i:%d symbol->width %d != %d (%s)\n", i, symbol->width, data[i].expected_width, data[i].data);
 
-            if (ret == 0) {
-                int width, row;
-                ret = testUtilModulesCmp(symbol, data[i].expected, &width, &row);
-                assert_zero(ret, "i:%d testUtilModulesCmp ret %d != 0 width %d row %d (%s)\n", i, ret, width, row, data[i].data);
+                if (ret == 0) {
+                    int width, row;
+                    ret = testUtilModulesCmp(symbol, data[i].expected, &width, &row);
+                    assert_zero(ret, "i:%d testUtilModulesCmp ret %d != 0 width %d row %d (%s)\n", i, ret, width, row, data[i].data);
+                }
             }
         }
-        #endif
 
         ZBarcode_Delete(symbol);
     }
@@ -435,14 +473,14 @@ static void test_encode(void)
 }
 
 // #181 Nico Gunkel OSS-Fuzz
-static void test_fuzz(void)
-{
+static void test_fuzz(int index, int debug) {
+
     testStart("");
 
     int ret;
     struct item {
         int symbology;
-        unsigned char* data;
+        unsigned char *data;
         int length;
         int input_mode;
         int option_1;
@@ -856,7 +894,9 @@ static void test_fuzz(void)
 
     for (int i = 0; i < data_size; i++) {
 
-        struct zint_symbol* symbol = ZBarcode_Create();
+        if (index != -1 && i != index) continue;
+
+        struct zint_symbol *symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
         symbol->symbology = data[i].symbology;
@@ -870,6 +910,7 @@ static void test_fuzz(void)
         if (data[i].option_1 != -1) {
             symbol->option_1 = data[i].option_1;
         }
+        symbol->debug |= debug;
 
         ret = ZBarcode_Encode(symbol, data[i].data, length);
         assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
@@ -880,10 +921,14 @@ static void test_fuzz(void)
     testFinish();
 }
 
-int main()
-{
-    test_encode();
-    test_fuzz();
+int main(int argc, char *argv[]) {
+
+    testFunction funcs[] = { /* name, func, has_index, has_generate, has_debug */
+        { "test_encode", test_encode, 1, 1, 1 },
+        { "test_fuzz", test_fuzz, 1, 0, 1 },
+    };
+
+    testRun(argc, argv, funcs, ARRAY_SIZE(funcs));
 
     testReport();
 

@@ -121,6 +121,12 @@ extern "C" {
         uint32_t n_pal_entries;
         size_l_t device;
         size_l_t millimeters;
+        // HeaderExtension1 Object
+        uint32_t cb_pixel_format;
+        uint32_t off_pixel_format;
+        uint32_t b_open_gl;
+        // HeaderExtension2 Object
+        size_l_t micrometers;
     } emf_header_t;
 
     typedef struct emr_header {
@@ -181,6 +187,12 @@ extern "C" {
         log_font_t elw;
     } emr_extcreatefontindirectw_t;
 
+    typedef struct emr_settextcolor {
+        uint32_t type;
+        uint32_t size;
+        color_ref_t color;
+    } emr_settextcolor_t;
+    
     typedef struct emr_exttextoutw {
         uint32_t type;
         uint32_t size;

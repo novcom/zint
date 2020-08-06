@@ -1,4 +1,4 @@
-/* rss.c - Handles Reduced Space Symbology (GS1 DataBar) */
+/* rss.c - GS1 DataBar (formerly Reduced Space Symbology) */
 
 /*
     libzint - the open source barcode library
@@ -64,8 +64,6 @@
  */
 
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #ifdef _MSC_VER
 #include <malloc.h>
 #endif
@@ -111,16 +109,15 @@ static int combins(int n, int r) {
  * routine to generate widths for RSS elements for a given value.#
  *
  * Calling arguments:
+ * int widths[] = element widths
  * val = required value
  * n = number of modules
  * elements = elements in a set (RSS-14 & Expanded = 4; RSS Limited = 7)
  * maxWidth = maximum module width of an element
  * noNarrow = 0 will skip patterns without a one module wide element
  *
- * Return:
- * static int widths[] = element widths
  **********************************************************************/
-static void getRSSwidths(int val, int n, int elements, int maxWidth, int noNarrow) {
+static void getRSSwidths(int widths[], int val, int n, int elements, int maxWidth, int noNarrow) {
     int bar;
     int elmWidth;
     int mxwElement;
@@ -160,18 +157,132 @@ static void getRSSwidths(int val, int n, int elements, int maxWidth, int noNarro
     return;
 }
 
-/* GS1 DataBar-14 */
+/* Calculate check digit from Annex A */
+static int calc_check_digit(unsigned char *src) {
+    int i, check_digit;
+    int count = 0;
+
+    for (i = 0; i < 13; i++) {
+        count += (i & 1) ? ctoi(src[i]) : 3 * ctoi(src[i]);
+    }
+    check_digit = 10 - (count % 10);
+    if (check_digit == 10) {
+        check_digit = 0;
+    }
+
+    return check_digit;
+}
+
+/* Set GTIN-14 human readable text */
+static void set_gtin14_hrt(struct zint_symbol *symbol, unsigned char *source, int src_len) {
+    int i;
+    unsigned char hrt[15];
+
+    ustrcpy(symbol->text, "(01)");
+    for (i = 0; i < 12; i++) {
+        hrt[i] = '0';
+    }
+    for (i = 0; i < src_len; i++) {
+        hrt[12 - i] = source[src_len - i - 1];
+    }
+
+    hrt[13] = itoc(calc_check_digit(hrt));
+    hrt[14] = '\0';
+
+    ustrcat(symbol->text, hrt);
+}
+
+/* Expand from a width pattern to a bit pattern */
+static int rss_expand(struct zint_symbol *symbol, int writer, char *p_latch, int width) {
+    int j;
+    int latch = *p_latch;
+
+    for (j = 0; j < width; j++) {
+        if (latch == '1') {
+            set_module(symbol, symbol->rows, writer);
+        } else {
+            unset_module(symbol, symbol->rows, writer);
+        }
+        writer++;
+    }
+    if (latch == '1') {
+        *p_latch = '0';
+    } else {
+        *p_latch = '1';
+    }
+
+    return writer;
+}
+
+/* Adjust top/bottom separator for finder patterns */
+static void rss14_finder_adjust(struct zint_symbol *symbol, int separator_row, int above_below, int finder_start) {
+    int i, finder_end;
+    int module_row = separator_row + above_below;
+    int latch;
+
+    /* Alternation is always left-to-right for Omnidirectional separators (unlike for Expanded) */
+    latch = '1';
+    for (i = finder_start, finder_end = finder_start + 13; i < finder_end; i++) {
+        if (!module_is_set(symbol, module_row, i)) {
+            if (latch == '1') {
+                set_module(symbol, separator_row, i);
+                latch = '0';
+            } else {
+                unset_module(symbol, separator_row, i);
+                latch = '1';
+            }
+        } else {
+            unset_module(symbol, separator_row, i);
+            latch = '1';
+        }
+    }
+}
+
+/* Top/bottom separator for DataBar */
+static void rss14_separator(struct zint_symbol *symbol, int width, int separator_row, int above_below, int finder_start, int finder2_start, int bottom_finder_value_3) {
+    int i, finder_end, finder_value_3_set;
+    int module_row = separator_row + above_below;
+
+    for (i = 4, width -= 4; i < width; i++) {
+        if (!module_is_set(symbol, module_row, i)) {
+            set_module(symbol, separator_row, i);
+        }
+    }
+    if (bottom_finder_value_3) {
+        /* ISO/IEC 24724:2011 5.3.2.2 "The single dark module that occurs in the 13 modules over finder value 3 is
+         * shifted one module to the right so that it is over the start of the three module-wide finder bar." */
+        finder_value_3_set = finder_start + 10;
+        for (i = finder_start, finder_end = finder_start + 13; i < finder_end; i++) {
+            if (i == finder_value_3_set) {
+                set_module(symbol, separator_row, i);
+            } else {
+                unset_module(symbol, separator_row, i);
+            }
+        }
+    } else {
+        if (finder_start) {
+            rss14_finder_adjust(symbol, separator_row, above_below, finder_start);
+        }
+        if (finder2_start) {
+            rss14_finder_adjust(symbol, separator_row, above_below, finder2_start);
+        }
+    }
+}
+
+/* GS1 DataBar Omnidirectional/Truncated/Stacked */
 INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_len) {
-    int error_number = 0, i, j, mask;
-    short int accum[112], left_reg[112], right_reg[112], x_reg[112], y_reg[112];
-    int data_character[4], data_group[4], v_odd[4], v_even[4];
+    int error_number = 0, i;
+    large_int accum;
+    uint64_t left_pair, right_pair;
+    int data_character[4] = {0}, data_group[4] = {0}, v_odd[4], v_even[4];
     int data_widths[8][4], checksum, c_left, c_right, total_widths[46], writer;
-    char latch, temp[32];
+    char latch;
     int separator_row;
+    int widths[4];
 
     separator_row = 0;
 
-    if (src_len > 13) {
+    if (src_len > 14) { /* Allow check digit to be specified (will be verified and ignored) */
         strcpy(symbol->errtxt, "380: Input too long");
         return ZINT_ERROR_TOO_LONG;
     }
@@ -181,121 +292,44 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
         return error_number;
     }
 
+    if (src_len == 14) { /* Verify check digit */
+        if (calc_check_digit(source) != ctoi(source[13])) {
+            strcpy(symbol->errtxt, "388: Invalid check digit");
+            return ZINT_ERROR_INVALID_CHECK;
+        }
+        src_len--; /* Ignore */
+    }
+
     /* make some room for a separator row for composite symbols */
     switch (symbol->symbology) {
-        case BARCODE_RSS14_CC:
-        case BARCODE_RSS14STACK_CC:
-        case BARCODE_RSS14_OMNI_CC:
+        case BARCODE_DBAR_OMN_CC:
+        case BARCODE_DBAR_STK_CC:
+        case BARCODE_DBAR_OMNSTK_CC:
             separator_row = symbol->rows;
             symbol->row_height[separator_row] = 1;
             symbol->rows += 1;
             break;
     }
 
-    for (i = 0; i < 112; i++) {
-        accum[i] = 0;
-        x_reg[i] = 0;
-        y_reg[i] = 0;
-    }
+    large_load_str_u64(&accum, source, src_len);
 
-    for (i = 0; i < 4; i++) {
-        data_character[i] = 0;
-        data_group[i] = 0;
-    }
-
-    binary_load(accum, (char*) source, src_len);
-    strcpy(temp, "10000000000000");
     if (symbol->option_1 == 2) {
         /* Add symbol linkage flag */
-        binary_load(y_reg, temp, strlen(temp));
-        binary_add(accum, y_reg);
-        for (i = 0; i < 112; i++) {
-            y_reg[i] = 0;
-        }
+        large_add_u64(&accum, 10000000000000);
     }
 
     /* Calculate left and right pair values */
-    strcpy(temp, "4537077");
-    binary_load(x_reg, temp, strlen(temp));
 
-    for (i = 0; i < 24; i++) {
-        shiftup(x_reg);
-    }
-
-    for (i = 24; i >= 0; i--) {
-        y_reg[i] = !islarger(x_reg, accum);
-        if (y_reg[i] == 1) {
-            binary_subtract(accum, x_reg);
-        }
-        shiftdown(x_reg);
-    }
-
-    for (i = 0; i < 112; i++) {
-        left_reg[i] = y_reg[i];
-        right_reg[i] = accum[i];
-    }
+    right_pair = large_div_u64(&accum, 4537077);
+    left_pair = large_lo(&accum);
 
     /* Calculate four data characters */
-    strcpy(temp, "1597");
-    binary_load(x_reg, temp, strlen(temp));
-    for (i = 0; i < 112; i++) {
-        accum[i] = left_reg[i];
-    }
 
-    for (i = 0; i < 24; i++) {
-        shiftup(x_reg);
-    }
+    data_character[0] = left_pair / 1597;
+    data_character[1] = left_pair % 1597;
 
-    for (i = 24; i >= 0; i--) {
-        y_reg[i] = !islarger(x_reg, accum);
-        if (y_reg[i] == 1) {
-            binary_subtract(accum, x_reg);
-        }
-        shiftdown(x_reg);
-    }
-
-    data_character[0] = 0;
-    data_character[1] = 0;
-    mask = 0x2000;
-    for (i = 13; i >= 0; i--) {
-        if (y_reg[i] == 1) {
-            data_character[0] += mask;
-        }
-        if (accum[i] == 1) {
-            data_character[1] += mask;
-        }
-        mask = mask >> 1;
-    }
-    strcpy(temp, "1597");
-    binary_load(x_reg, temp, strlen(temp));
-    for (i = 0; i < 112; i++) {
-        accum[i] = right_reg[i];
-    }
-
-    for (i = 0; i < 24; i++) {
-        shiftup(x_reg);
-    }
-
-    for (i = 24; i >= 0; i--) {
-        y_reg[i] = !islarger(x_reg, accum);
-        if (y_reg[i] == 1) {
-            binary_subtract(accum, x_reg);
-        }
-        shiftdown(x_reg);
-    }
-
-    data_character[2] = 0;
-    data_character[3] = 0;
-    mask = 0x2000;
-    for (i = 13; i >= 0; i--) {
-        if (y_reg[i] == 1) {
-            data_character[2] += mask;
-        }
-        if (accum[i] == 1) {
-            data_character[3] += mask;
-        }
-        mask = mask >> 1;
-    }
+    data_character[2] = right_pair / 1597;
+    data_character[3] = right_pair % 1597;
 
     /* Calculate odd and even subset values */
 
@@ -314,6 +348,7 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     if ((data_character[0] >= 2715) && (data_character[0] <= 2840)) {
         data_group[0] = 4;
     }
+
     if ((data_character[1] >= 0) && (data_character[1] <= 335)) {
         data_group[1] = 5;
     }
@@ -326,6 +361,7 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     if ((data_character[1] >= 1516) && (data_character[1] <= 1596)) {
         data_group[1] = 8;
     }
+
     if ((data_character[3] >= 0) && (data_character[3] <= 335)) {
         data_group[3] = 5;
     }
@@ -338,6 +374,7 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     if ((data_character[3] >= 1516) && (data_character[3] <= 1596)) {
         data_group[3] = 8;
     }
+
     if ((data_character[2] >= 0) && (data_character[2] <= 160)) {
         data_group[2] = 0;
     }
@@ -367,23 +404,23 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     /* Use RSS subset width algorithm */
     for (i = 0; i < 4; i++) {
         if ((i == 0) || (i == 2)) {
-            getRSSwidths(v_odd[i], modules_odd[data_group[i]], 4, widest_odd[data_group[i]], 1);
+            getRSSwidths(widths, v_odd[i], modules_odd[data_group[i]], 4, widest_odd[data_group[i]], 1);
             data_widths[0][i] = widths[0];
             data_widths[2][i] = widths[1];
             data_widths[4][i] = widths[2];
             data_widths[6][i] = widths[3];
-            getRSSwidths(v_even[i], modules_even[data_group[i]], 4, widest_even[data_group[i]], 0);
+            getRSSwidths(widths, v_even[i], modules_even[data_group[i]], 4, widest_even[data_group[i]], 0);
             data_widths[1][i] = widths[0];
             data_widths[3][i] = widths[1];
             data_widths[5][i] = widths[2];
             data_widths[7][i] = widths[3];
         } else {
-            getRSSwidths(v_odd[i], modules_odd[data_group[i]], 4, widest_odd[data_group[i]], 0);
+            getRSSwidths(widths, v_odd[i], modules_odd[data_group[i]], 4, widest_odd[data_group[i]], 0);
             data_widths[0][i] = widths[0];
             data_widths[2][i] = widths[1];
             data_widths[4][i] = widths[2];
             data_widths[6][i] = widths[3];
-            getRSSwidths(v_even[i], modules_even[data_group[i]], 4, widest_even[data_group[i]], 1);
+            getRSSwidths(widths, v_even[i], modules_even[data_group[i]], 4, widest_even[data_group[i]], 1);
             data_widths[1][i] = widths[0];
             data_widths[3][i] = widths[1];
             data_widths[5][i] = widths[2];
@@ -412,6 +449,10 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     c_left = checksum / 9;
     c_right = checksum % 9;
 
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("c_left: %d,  c_right: %d\n", c_left, c_right);
+    }
+
     /* Put element widths together */
     total_widths[0] = 1;
     total_widths[1] = 1;
@@ -429,145 +470,51 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
     }
 
     /* Put this data into the symbol */
-    if ((symbol->symbology == BARCODE_RSS14) || (symbol->symbology == BARCODE_RSS14_CC)) {
-        int count;
-        int check_digit;
-        char hrt[15];
+    if ((symbol->symbology == BARCODE_DBAR_OMN) || (symbol->symbology == BARCODE_DBAR_OMN_CC)) {
         writer = 0;
         latch = '0';
         for (i = 0; i < 46; i++) {
-            for (j = 0; j < total_widths[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer);
-                }
-                writer++;
-            }
-            if (latch == '1') {
-                latch = '0';
-            } else {
-                latch = '1';
-            }
+            writer = rss_expand(symbol, writer, &latch, total_widths[i]);
         }
         if (symbol->width < writer) {
             symbol->width = writer;
         }
-        if (symbol->symbology == BARCODE_RSS14_CC) {
+        if (symbol->symbology == BARCODE_DBAR_OMN_CC) {
             /* separator pattern for composite symbol */
-            for (i = 4; i < 92; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    set_module(symbol, separator_row, i);
-                }
-            }
-            latch = '1';
-            for (i = 16; i < 32; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    if (latch == '1') {
-                        set_module(symbol, separator_row, i);
-                        latch = '0';
-                    } else {
-                        unset_module(symbol, separator_row, i);
-                        latch = '1';
-                    }
-                } else {
-                    unset_module(symbol, separator_row, i);
-                    latch = '1';
-                }
-            }
-            latch = '1';
-            for (i = 63; i < 78; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    if (latch == '1') {
-                        set_module(symbol, separator_row, i);
-                        latch = '0';
-                    } else {
-                        unset_module(symbol, separator_row, i);
-                        latch = '1';
-                    }
-                } else {
-                    unset_module(symbol, separator_row, i);
-                    latch = '1';
-                }
-            }
+            rss14_separator(symbol, 96, separator_row, 1 /*above*/, 18, 63, 0 /*bottom_finder_value_3*/);
         }
         symbol->rows = symbol->rows + 1;
 
-        count = 0;
-        check_digit = 0;
-
-        /* Calculate check digit from Annex A and place human readable text */
-        ustrcpy(symbol->text, (unsigned char*) "(01)");
-        for (i = 0; i < 14; i++) {
-            hrt[i] = '0';
-        }
-        for (i = 0; i < src_len; i++) {
-            hrt[12 - i] = source[src_len - i - 1];
-        }
-        hrt[14] = '\0';
-
-        for (i = 0; i < 13; i++) {
-            count += ctoi(hrt[i]);
-
-            if (!(i & 1)) {
-                count += 2 * (ctoi(hrt[i]));
-            }
-        }
-
-        check_digit = 10 - (count % 10);
-        if (check_digit == 10) {
-            check_digit = 0;
-        }
-        hrt[13] = itoc(check_digit);
-
-        strcat((char*) symbol->text, hrt);
+        /* Set human readable text */
+        set_gtin14_hrt(symbol, source, src_len);
 
         set_minimum_height(symbol, 14); // Minimum height is 14X for truncated symbol
     }
 
-    if ((symbol->symbology == BARCODE_RSS14STACK) || (symbol->symbology == BARCODE_RSS14STACK_CC)) {
+    if ((symbol->symbology == BARCODE_DBAR_STK) || (symbol->symbology == BARCODE_DBAR_STK_CC)) {
         /* top row */
         writer = 0;
         latch = '0';
         for (i = 0; i < 23; i++) {
-            for (j = 0; j < total_widths[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer);
-                } else {
-                    unset_module(symbol, symbol->rows, writer);
-                }
-                writer++;
-            }
-            if (latch == '1') {
-                latch = '0';
-            } else {
-                latch = '1';
-            }
+            writer = rss_expand(symbol, writer, &latch, total_widths[i]);
         }
         set_module(symbol, symbol->rows, writer);
         unset_module(symbol, symbol->rows, writer + 1);
         symbol->row_height[symbol->rows] = 5;
+
         /* bottom row */
         symbol->rows = symbol->rows + 2;
         set_module(symbol, symbol->rows, 0);
         unset_module(symbol, symbol->rows, 1);
-        writer = 0;
+        writer = 2;
         latch = '1';
         for (i = 23; i < 46; i++) {
-            for (j = 0; j < total_widths[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer + 2);
-                } else {
-                    unset_module(symbol, symbol->rows, writer + 2);
-                }
-                writer++;
-            }
-            if (latch == '1') {
-                latch = '0';
-            } else {
-                latch = '1';
-            }
+            writer = rss_expand(symbol, writer, &latch, total_widths[i]);
         }
         symbol->row_height[symbol->rows] = 7;
+
         /* separator pattern */
+        /* See #183 for this interpretation of ISO/IEC 24724:2011 5.3.2.1 */
         for (i = 1; i < 46; i++) {
             if (module_is_set(symbol, symbol->rows - 2, i) == module_is_set(symbol, symbol->rows, i)) {
                 if (!(module_is_set(symbol, symbol->rows - 2, i))) {
@@ -583,28 +530,10 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
         unset_module(symbol, symbol->rows - 1, 2);
         unset_module(symbol, symbol->rows - 1, 3);
         symbol->row_height[symbol->rows - 1] = 1;
-        if (symbol->symbology == BARCODE_RSS14STACK_CC) {
+
+        if (symbol->symbology == BARCODE_DBAR_STK_CC) {
             /* separator pattern for composite symbol */
-            for (i = 4; i < 46; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    set_module(symbol, separator_row, i);
-                }
-            }
-            latch = '1';
-            for (i = 16; i < 32; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    if (latch == '1') {
-                        set_module(symbol, separator_row, i);
-                        latch = '0';
-                    } else {
-                        unset_module(symbol, separator_row, i);
-                        latch = '1';
-                    }
-                } else {
-                    unset_module(symbol, separator_row, i);
-                    latch = '1';
-                }
-            }
+            rss14_separator(symbol, 50, separator_row, 1 /*above*/, 18, 0, 0 /*bottom_finder_value_3*/);
         }
         symbol->rows = symbol->rows + 1;
         if (symbol->width < 50) {
@@ -612,141 +541,71 @@ INTERNAL int rss14(struct zint_symbol *symbol, unsigned char source[], int src_l
         }
     }
 
-    if ((symbol->symbology == BARCODE_RSS14STACK_OMNI) || (symbol->symbology == BARCODE_RSS14_OMNI_CC)) {
+    if ((symbol->symbology == BARCODE_DBAR_OMNSTK) || (symbol->symbology == BARCODE_DBAR_OMNSTK_CC)) {
         /* top row */
         writer = 0;
         latch = '0';
         for (i = 0; i < 23; i++) {
-            for (j = 0; j < total_widths[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer);
-                } else {
-                    unset_module(symbol, symbol->rows, writer);
-                }
-                writer++;
-            }
-            latch = (latch == '1' ? '0' : '1');
+            writer = rss_expand(symbol, writer, &latch, total_widths[i]);
         }
         set_module(symbol, symbol->rows, writer);
         unset_module(symbol, symbol->rows, writer + 1);
+
         /* bottom row */
         symbol->rows = symbol->rows + 4;
         set_module(symbol, symbol->rows, 0);
         unset_module(symbol, symbol->rows, 1);
-        writer = 0;
+        writer = 2;
         latch = '1';
         for (i = 23; i < 46; i++) {
-            for (j = 0; j < total_widths[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer + 2);
-                } else {
-                    unset_module(symbol, symbol->rows, writer + 2);
-                }
-                writer++;
-            }
-            if (latch == '1') {
-                latch = '0';
-            } else {
-                latch = '1';
-            }
+            writer = rss_expand(symbol, writer, &latch, total_widths[i]);
         }
+
         /* middle separator */
         for (i = 5; i < 46; i += 2) {
             set_module(symbol, symbol->rows - 2, i);
         }
         symbol->row_height[symbol->rows - 2] = 1;
+
         /* top separator */
-        for (i = 4; i < 46; i++) {
-            if (!(module_is_set(symbol, symbol->rows - 4, i))) {
-                set_module(symbol, symbol->rows - 3, i);
-            }
-        }
-        latch = '1';
-        for (i = 17; i < 33; i++) {
-            if (!(module_is_set(symbol, symbol->rows - 4, i))) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows - 3, i);
-                    latch = '0';
-                } else {
-                    unset_module(symbol, symbol->rows - 3, i);
-                    latch = '1';
-                }
-            } else {
-                unset_module(symbol, symbol->rows - 3, i);
-                latch = '1';
-            }
-        }
+        rss14_separator(symbol, 50, symbol->rows - 3, -1 /*below*/, 18, 0, 0 /*bottom_finder_value_3*/);
         symbol->row_height[symbol->rows - 3] = 1;
+
         /* bottom separator */
-        for (i = 4; i < 46; i++) {
-            if (!(module_is_set(symbol, symbol->rows, i))) {
-                set_module(symbol, symbol->rows - 1, i);
-            }
-        }
-        latch = '1';
-        for (i = 16; i < 32; i++) {
-            if (!(module_is_set(symbol, symbol->rows, i))) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows - 1, i);
-                    latch = '0';
-                } else {
-                    unset_module(symbol, symbol->rows - 1, i);
-                    latch = '1';
-                }
-            } else {
-                unset_module(symbol, symbol->rows - 1, i);
-                latch = '1';
-            }
-        }
+        /* 17 == 2 (guard) + 15 (inner char); +2 to skip over finder elements 4 & 5 (right to left) */
+        rss14_separator(symbol, 50, symbol->rows - 1, 1 /*above*/, 17 + 2, 0, c_right == 3);
         symbol->row_height[symbol->rows - 1] = 1;
         if (symbol->width < 50) {
             symbol->width = 50;
         }
-        if (symbol->symbology == BARCODE_RSS14_OMNI_CC) {
+
+        if (symbol->symbology == BARCODE_DBAR_OMNSTK_CC) {
             /* separator pattern for composite symbol */
-            for (i = 4; i < 46; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    set_module(symbol, separator_row, i);
-                }
-            }
-            latch = '1';
-            for (i = 16; i < 32; i++) {
-                if (!(module_is_set(symbol, separator_row + 1, i))) {
-                    if (latch == '1') {
-                        set_module(symbol, separator_row, i);
-                        latch = '0';
-                    } else {
-                        unset_module(symbol, separator_row, i);
-                        latch = '1';
-                    }
-                } else {
-                    unset_module(symbol, separator_row, i);
-                    latch = '1';
-                }
-            }
+            rss14_separator(symbol, 50, separator_row, 1 /*above*/, 18, 0, 0 /*bottom_finder_value_3*/);
         }
         symbol->rows = symbol->rows + 1;
 
         set_minimum_height(symbol, 33);
     }
 
-
     return error_number;
 }
 
 /* GS1 DataBar Limited */
 INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int src_len) {
-    int error_number = 0, i, mask;
-    short int accum[112], left_reg[112], right_reg[112], x_reg[112], y_reg[112];
+    int error_number = 0, i;
+    large_int accum;
+    uint64_t left_character, right_character;
     int left_group, right_group, left_odd, left_even, right_odd, right_even;
-    int left_character, right_character, left_widths[14], right_widths[14];
-    int checksum, check_elements[14], total_widths[46], writer, j, check_digit, count;
-    char latch, hrt[15], temp[32];
+    int left_widths[14], right_widths[14];
+    int checksum, check_elements[14], total_widths[46], writer;
+    char latch;
     int separator_row;
+    int widths[7];
 
     separator_row = 0;
 
-    if (src_len > 13) {
+    if (src_len > 14) { /* Allow check digit to be specified (will be verified and ignored) */
         strcpy(symbol->errtxt, "382: Input too long");
         return ZINT_ERROR_TOO_LONG;
     }
@@ -755,6 +614,15 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
         strcpy(symbol->errtxt, "383: Invalid characters in data");
         return error_number;
     }
+
+    if (src_len == 14) { /* Verify check digit */
+        if (calc_check_digit(source) != ctoi(source[13])) {
+            strcpy(symbol->errtxt, "389: Invalid check digit");
+            return ZINT_ERROR_INVALID_CHECK;
+        }
+        src_len--; /* Ignore */
+    }
+
     if (src_len == 13) {
         if ((source[0] != '0') && (source[0] != '1')) {
             strcpy(symbol->errtxt, "384: Input out of range");
@@ -763,178 +631,66 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
     }
 
     /* make some room for a separator row for composite symbols */
-    if (symbol->symbology == BARCODE_RSS_LTD_CC) {
+    if (symbol->symbology == BARCODE_DBAR_LTD_CC) {
         separator_row = symbol->rows;
         symbol->row_height[separator_row] = 1;
         symbol->rows += 1;
     }
 
-    for (i = 0; i < 112; i++) {
-        accum[i] = 0;
-        x_reg[i] = 0;
-        y_reg[i] = 0;
-    }
+    large_load_str_u64(&accum, source, src_len);
 
-    binary_load(accum, (char*) source, src_len);
     if (symbol->option_1 == 2) {
         /* Add symbol linkage flag */
-        strcpy(temp, "2015133531096");
-        binary_load(y_reg, temp, strlen(temp));
-        binary_add(accum, y_reg);
-        for (i = 0; i < 112; i++) {
-            y_reg[i] = 0;
-        }
+        large_add_u64(&accum, 2015133531096);
     }
 
     /* Calculate left and right pair values */
-    strcpy(temp, "2013571");
-    binary_load(x_reg, temp, strlen(temp));
 
-    for (i = 0; i < 24; i++) {
-        shiftup(x_reg);
-    }
+    right_character = large_div_u64(&accum, 2013571);
+    left_character = large_lo(&accum);
 
-    for (i = 24; i >= 0; i--) {
-        y_reg[i] = !islarger(x_reg, accum);
-        if (y_reg[i] == 1) {
-            binary_subtract(accum, x_reg);
-        }
-        shiftdown(x_reg);
-    }
-
-    for (i = 0; i < 112; i++) {
-        left_reg[i] = y_reg[i];
-        right_reg[i] = accum[i];
-    }
-
-    left_group = 0;
-    strcpy(temp, "183063");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
-        left_group = 1;
-    }
-    strcpy(temp, "820063");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
-        left_group = 2;
-    }
-    strcpy(temp, "1000775");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
-        left_group = 3;
-    }
-    strcpy(temp, "1491020");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
-        left_group = 4;
-    }
-    strcpy(temp, "1979844");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
-        left_group = 5;
-    }
-    strcpy(temp, "1996938");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(left_reg, accum)) {
+    if (left_character >= 1996939) {
         left_group = 6;
+        left_character -= 1996939;
+    } else if (left_character >= 1979845) {
+        left_group = 5;
+        left_character -= 1979845;
+    } else if (left_character >= 1491021) {
+        left_group = 4;
+        left_character -= 1491021;
+    } else if (left_character >= 1000776) {
+        left_group = 3;
+        left_character -= 1000776;
+    } else if (left_character >= 820064) {
+        left_group = 2;
+        left_character -= 820064;
+    } else if (left_character >= 183064) {
+        left_group = 1;
+        left_character -= 183064;
+    } else {
+        left_group = 0;
     }
-    right_group = 0;
-    strcpy(temp, "183063");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
-        right_group = 1;
-    }
-    strcpy(temp, "820063");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
-        right_group = 2;
-    }
-    strcpy(temp, "1000775");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
-        right_group = 3;
-    }
-    strcpy(temp, "1491020");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
-        right_group = 4;
-    }
-    strcpy(temp, "1979844");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
-        right_group = 5;
-    }
-    strcpy(temp, "1996938");
-    binary_load(accum, temp, strlen(temp));
-    if (islarger(right_reg, accum)) {
+
+    if (right_character >= 1996939) {
         right_group = 6;
-    }
-
-    switch (left_group) {
-        case 1: strcpy(temp, "183064");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-        case 2: strcpy(temp, "820064");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-        case 3: strcpy(temp, "1000776");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-        case 4: strcpy(temp, "1491021");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-        case 5: strcpy(temp, "1979845");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-        case 6: strcpy(temp, "1996939");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(left_reg, accum);
-            break;
-    }
-
-    switch (right_group) {
-        case 1: strcpy(temp, "183064");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-        case 2: strcpy(temp, "820064");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-        case 3: strcpy(temp, "1000776");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-        case 4: strcpy(temp, "1491021");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-        case 5: strcpy(temp, "1979845");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-        case 6: strcpy(temp, "1996939");
-            binary_load(accum, temp, strlen(temp));
-            binary_subtract(right_reg, accum);
-            break;
-    }
-
-    left_character = 0;
-    right_character = 0;
-    mask = 0x800000;
-    for (i = 23; i >= 0; i--) {
-        if (left_reg[i] == 1) {
-            left_character += mask;
-        }
-        if (right_reg[i] == 1) {
-            right_character += mask;
-        }
-        mask = mask >> 1;
+        right_character -= 1996939;
+    } else if (right_character >= 1979845) {
+        right_group = 5;
+        right_character -= 1979845;
+    } else if (right_character >= 1491021) {
+        right_group = 4;
+        right_character -= 1491021;
+    } else if (right_character >= 1000776) {
+        right_group = 3;
+        right_character -= 1000776;
+    } else if (right_character >= 820064) {
+        right_group = 2;
+        right_character -= 820064;
+    } else if (right_character >= 183064) {
+        right_group = 1;
+        right_character -= 183064;
+    } else {
+        right_group = 0;
     }
 
     left_odd = left_character / t_even_ltd[left_group];
@@ -942,38 +698,22 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
     right_odd = right_character / t_even_ltd[right_group];
     right_even = right_character % t_even_ltd[right_group];
 
-    getRSSwidths(left_odd, modules_odd_ltd[left_group], 7, widest_odd_ltd[left_group], 1);
-    left_widths[0] = widths[0];
-    left_widths[2] = widths[1];
-    left_widths[4] = widths[2];
-    left_widths[6] = widths[3];
-    left_widths[8] = widths[4];
-    left_widths[10] = widths[5];
-    left_widths[12] = widths[6];
-    getRSSwidths(left_even, modules_even_ltd[left_group], 7, widest_even_ltd[left_group], 0);
-    left_widths[1] = widths[0];
-    left_widths[3] = widths[1];
-    left_widths[5] = widths[2];
-    left_widths[7] = widths[3];
-    left_widths[9] = widths[4];
-    left_widths[11] = widths[5];
-    left_widths[13] = widths[6];
-    getRSSwidths(right_odd, modules_odd_ltd[right_group], 7, widest_odd_ltd[right_group], 1);
-    right_widths[0] = widths[0];
-    right_widths[2] = widths[1];
-    right_widths[4] = widths[2];
-    right_widths[6] = widths[3];
-    right_widths[8] = widths[4];
-    right_widths[10] = widths[5];
-    right_widths[12] = widths[6];
-    getRSSwidths(right_even, modules_even_ltd[right_group], 7, widest_even_ltd[right_group], 0);
-    right_widths[1] = widths[0];
-    right_widths[3] = widths[1];
-    right_widths[5] = widths[2];
-    right_widths[7] = widths[3];
-    right_widths[9] = widths[4];
-    right_widths[11] = widths[5];
-    right_widths[13] = widths[6];
+    getRSSwidths(widths, left_odd, modules_odd_ltd[left_group], 7, widest_odd_ltd[left_group], 1);
+    for (i = 0; i <= 6; i++) {
+        left_widths[i * 2] = widths[i];
+    }
+    getRSSwidths(widths, left_even, modules_even_ltd[left_group], 7, widest_even_ltd[left_group], 0);
+    for (i = 0; i <= 6; i++) {
+        left_widths[i * 2 + 1] = widths[i];
+    }
+    getRSSwidths(widths, right_odd, modules_odd_ltd[right_group], 7, widest_odd_ltd[right_group], 1);
+    for (i = 0; i <= 6; i++) {
+        right_widths[i * 2] = widths[i];
+    }
+    getRSSwidths(widths, right_even, modules_even_ltd[right_group], 7, widest_even_ltd[right_group], 0);
+    for (i = 0; i <= 6; i++) {
+        right_widths[i * 2 + 1] = widths[i];
+    }
 
     checksum = 0;
     /* Calculate the checksum */
@@ -1000,15 +740,7 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
     writer = 0;
     latch = '0';
     for (i = 0; i < 46; i++) {
-        for (j = 0; j < total_widths[i]; j++) {
-            if (latch == '1') {
-                set_module(symbol, symbol->rows, writer);
-            } else {
-                unset_module(symbol, symbol->rows, writer);
-            }
-            writer++;
-        }
-        latch = (latch == '1' ? '0' : '1');
+        writer = rss_expand(symbol, writer, &latch, total_widths[i]);
     }
     if (symbol->width < writer) {
         symbol->width = writer;
@@ -1016,7 +748,7 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
     symbol->rows = symbol->rows + 1;
 
     /* add separator pattern if composite symbol */
-    if (symbol->symbology == BARCODE_RSS_LTD_CC) {
+    if (symbol->symbology == BARCODE_DBAR_LTD_CC) {
         for (i = 4; i < 70; i++) {
             if (!(module_is_set(symbol, separator_row + 1, i))) {
                 set_module(symbol, separator_row, i);
@@ -1024,36 +756,8 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
         }
     }
 
-    /* Calculate check digit from Annex A and place human readable text */
-
-    check_digit = 0;
-    count = 0;
-
-    ustrcpy(symbol->text, (unsigned char*) "(01)");
-    for (i = 0; i < 14; i++) {
-        hrt[i] = '0';
-    }
-    for (i = 0; i < src_len; i++) {
-        hrt[12 - i] = source[src_len - i - 1];
-    }
-
-    for (i = 0; i < 13; i++) {
-        count += ctoi(hrt[i]);
-
-        if (!(i & 1)) {
-            count += 2 * (ctoi(hrt[i]));
-        }
-    }
-
-    check_digit = 10 - (count % 10);
-    if (check_digit == 10) {
-        check_digit = 0;
-    }
-
-    hrt[13] = itoc(check_digit);
-    hrt[14] = '\0';
-
-    strcat((char*) symbol->text, hrt);
+    /* Set human readable text */
+    set_gtin14_hrt(symbol, source, src_len);
 
     set_minimum_height(symbol, 10);
 
@@ -1062,7 +766,7 @@ INTERNAL int rsslimited(struct zint_symbol *symbol, unsigned char source[], int 
 
 /* Handles all data encodation from section 7.2.5 of ISO/IEC 24724 */
 static int rss_binary_string(struct zint_symbol *symbol, char source[], char binary_string[]) {
-    int encoding_method, i, j, read_posn, last_digit, debug = symbol->debug, mode = NUMERIC;
+    int encoding_method, i, j, read_posn, last_digit, debug = (symbol->debug & ZINT_DEBUG_PRINT), mode = NUMERIC;
     int symbol_characters, characters_per_row;
 #ifndef _MSC_VER
     char general_field[strlen(source) + 1];
@@ -1071,8 +775,6 @@ static int rss_binary_string(struct zint_symbol *symbol, char source[], char bin
 #endif
     int remainder, d1, d2;
     char padstring[40];
-
-    read_posn = 0;
 
     /* Decide whether a compressed data field is required and if so what
     method to use - method 2 = no compressed data field */
@@ -1407,7 +1109,7 @@ static int rss_binary_string(struct zint_symbol *symbol, char source[], char bin
     }
     symbol_characters = ((strlen(binary_string) + remainder) / 12) + 1;
 
-    if ((symbol->symbology == BARCODE_RSS_EXPSTACK) || (symbol->symbology == BARCODE_RSS_EXPSTACK_CC)) {
+    if ((symbol->symbology == BARCODE_DBAR_EXPSTK) || (symbol->symbology == BARCODE_DBAR_EXPSTK_CC)) {
         characters_per_row = symbol->option_2 * 2;
 
         if ((characters_per_row < 2) || (characters_per_row > 20)) {
@@ -1444,7 +1146,7 @@ static int rss_binary_string(struct zint_symbol *symbol, char source[], char bin
         }
         symbol_characters = ((strlen(binary_string) + remainder) / 12) + 1;
 
-        if ((symbol->symbology == BARCODE_RSS_EXPSTACK) || (symbol->symbology == BARCODE_RSS_EXPSTACK_CC)) {
+        if ((symbol->symbology == BARCODE_DBAR_EXPSTK) || (symbol->symbology == BARCODE_DBAR_EXPSTK_CC)) {
             characters_per_row = symbol->option_2 * 2;
 
             if ((characters_per_row < 2) || (characters_per_row > 20)) {
@@ -1512,6 +1214,67 @@ static int rss_binary_string(struct zint_symbol *symbol, char source[], char bin
     return 0;
 }
 
+static void rssexp_separator(struct zint_symbol *symbol, int width, int cols, int separator_row, int above_below, int special_case_row, int left_to_right, int odd_last_row, int *p_v2_latch) {
+    int i, i_start, i_end, j, k;
+    int module_row = separator_row + above_below;
+    int v2_latch = p_v2_latch ? *p_v2_latch : 0;
+    int space_latch = 0;
+
+    for (j = 4 + special_case_row, width -= 4; j < width; j++) {
+        if (module_is_set(symbol, module_row, j)) {
+            unset_module(symbol, separator_row, j);
+        } else {
+            set_module(symbol, separator_row, j);
+        }
+    }
+
+    /* finder adjustment */
+    for (j = 0; j < cols; j++) {
+        k = (49 * j) + 19 + special_case_row; /* 49 == data (17) + finder (15) + data(17) triplet, 19 == 2 (guard) + 17 (initial check/data character) */
+        if (left_to_right) {
+            i_start = v2_latch ? 2 : 0; /* Last 13 modules of version 2 finder and first 13 modules of version 1 finder */
+            i_end = v2_latch ? 15 : 13;
+            for (i = i_start; i < i_end; i++) {
+                if (module_is_set(symbol, module_row, i + k)) {
+                    unset_module(symbol, separator_row, i + k);
+                    space_latch = 0;
+                } else {
+                    if (space_latch) {
+                        unset_module(symbol, separator_row, i + k);
+                    } else {
+                        set_module(symbol, separator_row, i + k);
+                    }
+                    space_latch = !space_latch;
+                }
+            }
+        } else {
+            if (odd_last_row) {
+                k -= 17; /* No data char at beginning of row, i.e. ends with finder */
+            }
+            i_start = v2_latch ? 14 : 12; /* First 13 modules of version 1 finder and last 13 modules of version 2 finder */
+            i_end = v2_latch ? 2 : 0;
+            for (i = i_start; i >= i_end; i--) {
+                if (module_is_set(symbol, module_row, i + k)) {
+                    unset_module(symbol, separator_row, i + k);
+                    space_latch = 0;
+                } else {
+                    if (space_latch) {
+                        unset_module(symbol, separator_row, i + k);
+                    } else {
+                        set_module(symbol, separator_row, i + k);
+                    }
+                    space_latch = !space_latch;
+                }
+            }
+        }
+        v2_latch = !v2_latch;
+    }
+
+    if (p_v2_latch && above_below == -1) { /* Only set if below */
+        *p_v2_latch = v2_latch;
+    }
+}
+
 /* GS1 DataBar Expanded */
 INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int src_len) {
     int i, j, k, p, data_chars, vs[21], group[21], v_odd[21], v_even[21];
@@ -1520,6 +1283,7 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
     int check_char, c_odd, c_even, elements[235], pattern_width, reader, writer;
     int separator_row;
     unsigned int bin_len = 13 * src_len + 200 + 1; /* Allow for 8 bits + 5-bit latch per char + 200 bits overhead/padding */
+    int widths[4];
 #ifndef _MSC_VER
     char reduced[src_len + 1], binary_string[bin_len];
 #else
@@ -1528,14 +1292,13 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
 #endif
 
     separator_row = 0;
-    reader = 0;
 
     i = gs1_verify(symbol, source, src_len, reduced);
     if (i != 0) {
         return i;
     }
 
-    if ((symbol->symbology == BARCODE_RSS_EXP_CC) || (symbol->symbology == BARCODE_RSS_EXPSTACK_CC)) {
+    if ((symbol->symbology == BARCODE_DBAR_EXP_CC) || (symbol->symbology == BARCODE_DBAR_EXPSTK_CC)) {
         /* make space for a composite separator pattern */
         separator_row = symbol->rows;
         symbol->row_height[separator_row] = 1;
@@ -1544,7 +1307,7 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
 
     strcpy(binary_string, "");
 
-    if (symbol->option_1 == 2) {
+    if (symbol->option_1 == 2) { /* The "component linkage" flag */
         strcat(binary_string, "1");
     } else {
         strcat(binary_string, "0");
@@ -1592,12 +1355,12 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
         v_odd[i] = (vs[i] - g_sum_exp[group[i] - 1]) / t_even_exp[group[i] - 1];
         v_even[i] = (vs[i] - g_sum_exp[group[i] - 1]) % t_even_exp[group[i] - 1];
 
-        getRSSwidths(v_odd[i], modules_odd_exp[group[i] - 1], 4, widest_odd_exp[group[i] - 1], 0);
+        getRSSwidths(widths, v_odd[i], modules_odd_exp[group[i] - 1], 4, widest_odd_exp[group[i] - 1], 0);
         char_widths[i][0] = widths[0];
         char_widths[i][2] = widths[1];
         char_widths[i][4] = widths[2];
         char_widths[i][6] = widths[3];
-        getRSSwidths(v_even[i], modules_even_exp[group[i] - 1], 4, widest_even_exp[group[i] - 1], 1);
+        getRSSwidths(widths, v_even[i], modules_even_exp[group[i] - 1], 4, widest_even_exp[group[i] - 1], 1);
         char_widths[i][1] = widths[0];
         char_widths[i][3] = widths[1];
         char_widths[i][5] = widths[2];
@@ -1618,6 +1381,10 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
 
     check_char = (211 * ((data_chars + 1) - 4)) + (checksum % 211);
 
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("Data chars: %d, Check char: %d\n", data_chars, check_char);
+    }
+
     if (check_char <= 347) {
         c_group = 1;
     }
@@ -1637,12 +1404,12 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
     c_odd = (check_char - g_sum_exp[c_group - 1]) / t_even_exp[c_group - 1];
     c_even = (check_char - g_sum_exp[c_group - 1]) % t_even_exp[c_group - 1];
 
-    getRSSwidths(c_odd, modules_odd_exp[c_group - 1], 4, widest_odd_exp[c_group - 1], 0);
+    getRSSwidths(widths, c_odd, modules_odd_exp[c_group - 1], 4, widest_odd_exp[c_group - 1], 0);
     check_widths[0] = widths[0];
     check_widths[2] = widths[1];
     check_widths[4] = widths[2];
     check_widths[6] = widths[3];
-    getRSSwidths(c_even, modules_even_exp[c_group - 1], 4, widest_even_exp[c_group - 1], 1);
+    getRSSwidths(widths, c_even, modules_even_exp[c_group - 1], 4, widest_even_exp[c_group - 1], 1);
     check_widths[1] = widths[0];
     check_widths[3] = widths[1];
     check_widths[5] = widths[2];
@@ -1681,7 +1448,7 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
         }
     }
 
-    if ((symbol->symbology == BARCODE_RSS_EXP) || (symbol->symbology == BARCODE_RSS_EXP_CC)) {
+    if ((symbol->symbology == BARCODE_DBAR_EXP) || (symbol->symbology == BARCODE_DBAR_EXP_CC)) {
         /* Copy elements into symbol */
 
         elements[0] = 1; // left guard
@@ -1693,44 +1460,12 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
         writer = 0;
         latch = '0';
         for (i = 0; i < pattern_width; i++) {
-            for (j = 0; j < elements[i]; j++) {
-                if (latch == '1') {
-                    set_module(symbol, symbol->rows, writer);
-                } else {
-                    unset_module(symbol, symbol->rows, writer);
-                }
-                writer++;
-            }
-            if (latch == '1') {
-                latch = '0';
-            } else {
-                latch = '1';
-            }
+            writer = rss_expand(symbol, writer, &latch, elements[i]);
         }
         if (symbol->width < writer) {
             symbol->width = writer;
         }
         symbol->rows = symbol->rows + 1;
-        if (symbol->symbology == BARCODE_RSS_EXP_CC) {
-            for (j = 4; j < (symbol->width - 4); j++) {
-                if (module_is_set(symbol, separator_row + 1, j)) {
-                    unset_module(symbol, separator_row, j);
-                } else {
-                    set_module(symbol, separator_row, j);
-                }
-            }
-            /* finder bar adjustment */
-            for (j = 0; j < (writer / 49); j++) {
-                k = (49 * j) + 18;
-                for (i = 0; i < 15; i++) {
-                    if ((!(module_is_set(symbol, separator_row + 1, i + k - 1))) &&
-                            (!(module_is_set(symbol, separator_row + 1, i + k))) &&
-                            module_is_set(symbol, separator_row, i + k - 1)) {
-                        unset_module(symbol, separator_row, i + k);
-                    }
-                }
-            }
-        }
 
         /* Add human readable text */
         for (i = 0; i <= src_len; i++) {
@@ -1749,6 +1484,7 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
     } else {
         int stack_rows;
         int current_row, current_block, left_to_right;
+        int v2_latch = 0;
         /* RSS Expanded Stacked */
 
         /* Bug corrected: Character missing for message
@@ -1757,8 +1493,7 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
          */
         int codeblocks = (data_chars + 1) / 2 + ((data_chars + 1) % 2);
 
-
-        if ((symbol->option_2 < 1) || (symbol->option_2 > 10)) {
+        if ((symbol->option_2 < 1) || (symbol->option_2 > 11)) {
             symbol->option_2 = 2;
         }
         if ((symbol->option_1 == 2) && (symbol->option_2 == 1)) {
@@ -1777,9 +1512,14 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
         for (current_row = 1; current_row <= stack_rows; current_row++) {
             int special_case_row = 0;
             int elements_in_sub;
-            int sub_elements[235];
-            for (i = 0; i < 235; i++) {
-                sub_elements[i] = 0;
+            int sub_elements[235] = {0};
+            int num_columns;
+
+            /* Number of columns in current row */
+            if (current_row * symbol->option_2 > codeblocks) {
+                num_columns = codeblocks - current_block;
+            } else {
+                num_columns = symbol->option_2;
             }
 
             /* Row Start */
@@ -1787,31 +1527,40 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
             sub_elements[1] = 1;
             elements_in_sub = 2;
 
+            /* If last row and is partial and even-numbered, and have even columns (segment pairs), and odd number of finders */
+            if ((current_row == stack_rows) && (num_columns != symbol->option_2) &&
+                    !(current_row & 1) && !(symbol->option_2 & 1) && (num_columns & 1)) { /* Odd number of finders == odd number of columns */
+                /* Special case bottom row */
+                special_case_row = 1;
+                sub_elements[0] = 2; /* Extra space (latch set below) */
+            }
+
+            /* If odd number of columns or current row odd-numbered or special case last row then left-to-right, else right-to-left */
+            if ((symbol->option_2 & 1) || (current_row & 1) || special_case_row) {
+                left_to_right = 1;
+            } else {
+                left_to_right = 0;
+            }
+
+            if (symbol->debug & ZINT_DEBUG_PRINT) {
+                if (current_row == stack_rows) {
+                    printf("Last row: number of columns: %d / %d, left to right: %d, special case: %d\n", num_columns, symbol->option_2, left_to_right, special_case_row);
+                }
+            }
+
             /* Row Data */
             reader = 0;
             do {
-                if (((symbol->option_2 & 1) || (current_row & 1)) ||
-                        ((current_row == stack_rows) && (codeblocks != (current_row * symbol->option_2)) &&
-                        (((current_row * symbol->option_2) - codeblocks) & 1))) {
-                    /* left to right */
-                     left_to_right = 1;
-                    i = 2 + (current_block * 21);
-                    for (j = 0; j < 21; j++) {
-                        if ((i + j) < pattern_width) {
-                                sub_elements[j + (reader * 21) + 2] = elements[i + j];
+                i = 2 + (current_block * 21);
+                for (j = 0; j < 21; j++) {
+                    if ((i + j) < pattern_width) {
+                        if (left_to_right) {
+                            sub_elements[j + (reader * 21) + 2] = elements[i + j];
+                        } else {
+                            sub_elements[(20 - j) + (num_columns - 1 - reader) * 21 + 2] = elements[i + j];
                         }
-                        elements_in_sub++;
                     }
-                } else {
-                    /* right to left */
-                    left_to_right = 0;
-                    i = 2 + (((current_row * symbol->option_2) - reader - 1) * 21);
-                    for (j = 0; j < 21; j++) {
-                        if ((i + j) < pattern_width) {
-                                sub_elements[(20 - j) + (reader * 21) + 2] = elements[i + j];
-                        }
-                        elements_in_sub++;
-                    }
+                    elements_in_sub++;
                 }
                 reader++;
                 current_block++;
@@ -1822,134 +1571,44 @@ INTERNAL int rssexpanded(struct zint_symbol *symbol, unsigned char source[], int
             sub_elements[elements_in_sub + 1] = 1;
             elements_in_sub += 2;
 
-            latch = (current_row & 1) ? '0' : '1';
-
-            if ((current_row == stack_rows) && (codeblocks != (current_row * symbol->option_2)) &&
-                    ((current_row & 1) == 0) && ((symbol->option_2 & 1) == 0)) {
-                /* Special case bottom row */
-                special_case_row = 1;
-                sub_elements[0] = 2;
-                latch = '0';
-            }
+            latch = (current_row & 1) || special_case_row ? '0' : '1';
 
             writer = 0;
             for (i = 0; i < elements_in_sub; i++) {
-                for (j = 0; j < sub_elements[i]; j++) {
-                    if (latch == '1') {
-                        set_module(symbol, symbol->rows, writer);
-                    } else {
-                        unset_module(symbol, symbol->rows, writer);
-                    }
-                    writer++;
-                }
-                if (latch == '1') {
-                    latch = '0';
-                } else {
-                    latch = '1';
-                }
+                writer = rss_expand(symbol, writer, &latch, sub_elements[i]);
             }
             if (symbol->width < writer) {
                 symbol->width = writer;
             }
 
             if (current_row != 1) {
+                int odd_last_row = (current_row == stack_rows) && (data_chars % 2 == 0);
+
                 /* middle separator pattern (above current row) */
                 for (j = 5; j < (49 * symbol->option_2); j += 2) {
                     set_module(symbol, symbol->rows - 2, j);
                 }
                 symbol->row_height[symbol->rows - 2] = 1;
+
                 /* bottom separator pattern (above current row) */
-                for (j = 4 + special_case_row; j < (writer - 4); j++) {
-                    if (module_is_set(symbol, symbol->rows, j)) {
-                        unset_module(symbol, symbol->rows - 1, j);
-                    } else {
-                        set_module(symbol, symbol->rows - 1, j);
-                    }
-                }
+                rssexp_separator(symbol, writer, reader, symbol->rows - 1, 1 /*above*/, special_case_row, left_to_right, odd_last_row, &v2_latch);
                 symbol->row_height[symbol->rows - 1] = 1;
-                /* finder bar adjustment */
-                for (j = 0; j < reader; j++) {
-                    k = (49 * j) + 18 + special_case_row;
-                    if (left_to_right) {
-                        for (i = 0; i < 15; i++) {
-                            if ((!(module_is_set(symbol, symbol->rows, i + k - 1))) &&
-                                    (!(module_is_set(symbol, symbol->rows, i + k))) &&
-                                    module_is_set(symbol, symbol->rows - 1, i + k - 1)) {
-                                unset_module(symbol, symbol->rows - 1, i + k);
-                            }
-                        }
-                    } else {
-                        if ((current_row == stack_rows) && (data_chars % 2 == 0)) {
-                            k -= 18;
-                        }
-                        for (i = 14; i >= 0; i--) {
-                            if ((!(module_is_set(symbol, symbol->rows, i + k + 1))) &&
-                                    (!(module_is_set(symbol, symbol->rows, i + k))) &&
-                                    module_is_set(symbol, symbol->rows - 1, i + k + 1)) {
-                                unset_module(symbol, symbol->rows - 1, i + k);
-                            }
-                        }
-                    }
-                }
             }
 
             if (current_row != stack_rows) {
                 /* top separator pattern (below current row) */
-                for (j = 4; j < (writer - 4); j++) {
-                    if (module_is_set(symbol, symbol->rows, j)) {
-                        unset_module(symbol, symbol->rows + 1, j);
-                    } else {
-                        set_module(symbol, symbol->rows + 1, j);
-                    }
-                }
+                rssexp_separator(symbol, writer, reader, symbol->rows + 1, -1 /*below*/, 0 /*special_case_row*/, left_to_right, 0 /*odd_last_row*/, &v2_latch);
                 symbol->row_height[symbol->rows + 1] = 1;
-                /* finder bar adjustment */
-                for (j = 0; j < reader; j++) {
-                    k = (49 * j) + 18;
-                    if (left_to_right) {
-                        for (i = 0; i < 15; i++) {
-                            if ((!(module_is_set(symbol, symbol->rows, i + k - 1))) &&
-                                    (!(module_is_set(symbol, symbol->rows, i + k))) &&
-                                    module_is_set(symbol, symbol->rows + 1, i + k - 1)) {
-                                unset_module(symbol, symbol->rows + 1, i + k);
-                            }
-                        }
-                    } else {
-                        for (i = 14; i >= 0; i--) {
-                            if ((!(module_is_set(symbol, symbol->rows, i + k + 1))) &&
-                                    (!(module_is_set(symbol, symbol->rows, i + k))) &&
-                                    module_is_set(symbol, symbol->rows + 1, i + k + 1)) {
-                                unset_module(symbol, symbol->rows + 1, i + k);
-                            }
-                        }
-                    }
-                }
             }
 
             symbol->rows = symbol->rows + 4;
         }
         symbol->rows = symbol->rows - 3;
-        if (symbol->symbology == BARCODE_RSS_EXPSTACK_CC) {
-            for (j = 4; j < (symbol->width - 4); j++) {
-                if (module_is_set(symbol, separator_row + 1, j)) {
-                    unset_module(symbol, separator_row, j);
-                } else {
-                    set_module(symbol, separator_row, j);
-                }
-            }
-            /* finder bar adjustment */
-            for (j = 0; j < reader; j++) {
-                k = (49 * j) + 18;
-                for (i = 0; i < 15; i++) {
-                    if ((!(module_is_set(symbol, separator_row + 1, i + k - 1))) &&
-                            (!(module_is_set(symbol, separator_row + 1, i + k))) &&
-                            module_is_set(symbol, separator_row, i + k - 1)) {
-                        unset_module(symbol, separator_row, i + k);
-                    }
-                }
-            }
-        }
+    }
 
+    if (symbol->symbology == BARCODE_DBAR_EXP_CC || symbol->symbology == BARCODE_DBAR_EXPSTK_CC) {
+        /* Composite separator */
+        rssexp_separator(symbol, symbol->width, 4, separator_row, 1 /*above*/, 0 /*special_case_row*/, 1 /*left_to_right*/, 0 /*odd_last_row*/, NULL);
     }
 
     for (i = 0; i < symbol->rows; i++) {

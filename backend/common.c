@@ -2,7 +2,7 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2017 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008 - 2020 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -30,14 +30,11 @@
     SUCH DAMAGE.
  */
 /* vim: set ts=4 sw=4 et : */
-#include <string.h>
 #include <stdio.h>
+#ifdef _MSC_VER
+#include <malloc.h>
+#endif
 #include "common.h"
-
-/* Local replacement for strlen() with unsigned char strings */
-INTERNAL size_t ustrlen(const unsigned char data[]) {
-    return strlen((const char*) data);
-}
 
 /* Converts a character 0-9 to its equivalent integer value */
 INTERNAL int ctoi(const char source) {
@@ -138,35 +135,28 @@ INTERNAL int posn(const char set_string[], const char data) {
     return -1;
 }
 
-/* Returns the number of times a character occurs in a string */
-INTERNAL int ustrchr_cnt(const unsigned char string[], const size_t length, const unsigned char c) {
-    int count = 0;
-    unsigned int i;
-    for (i = 0; i < length; i++) {
-        if (string[i] == c) {
-            count++;
-        }
-    }
-    return count;
-}
-
-/* Return true (1) if a module is dark/black, otherwise false (0) */
+/* Return true (1) if a module is dark/black/colour, otherwise false (0) */
 INTERNAL int module_is_set(const struct zint_symbol *symbol, const int y_coord, const int x_coord) {
     if (symbol->symbology == BARCODE_ULTRA) {
         return symbol->encoded_data[y_coord][x_coord];
     } else {
-        return (symbol->encoded_data[y_coord][x_coord / 7] >> (x_coord % 7)) & 1;
+        return (symbol->encoded_data[y_coord][x_coord / 8] >> (x_coord % 8)) & 1;
     }
 }
 
 /* Set a module to dark/black */
 INTERNAL void set_module(struct zint_symbol *symbol, const int y_coord, const int x_coord) {
-    symbol->encoded_data[y_coord][x_coord / 7] |= 1 << (x_coord % 7);
+    symbol->encoded_data[y_coord][x_coord / 8] |= 1 << (x_coord % 8);
+}
+
+/* Set a module to a colour */
+INTERNAL void set_module_colour(struct zint_symbol *symbol, const int y_coord, const int x_coord, const int colour) {
+    symbol->encoded_data[y_coord][x_coord] = colour;
 }
 
 /* Set (or unset) a module to white */
 INTERNAL void unset_module(struct zint_symbol *symbol, const int y_coord, const int x_coord) {
-    symbol->encoded_data[y_coord][x_coord / 7] &= ~(1 << (x_coord % 7));
+    symbol->encoded_data[y_coord][x_coord / 8] &= ~(1 << (x_coord % 8));
 }
 
 /* Expands from a width pattern to a bit pattern */
@@ -203,7 +193,8 @@ INTERNAL void expand(struct zint_symbol *symbol, const char data[]) {
     symbol->rows = symbol->rows + 1;
 }
 
-/* Indicates which symbologies can have row binding */
+/* Indicates which symbologies can have row binding
+ * Note: if change this must also change version in frontend/main.c */
 INTERNAL int is_stackable(const int symbology) {
     if (symbology < BARCODE_PDF417) {
         return 1;
@@ -220,34 +211,29 @@ INTERNAL int is_stackable(const int symbology) {
         case BARCODE_ITF14:
         case BARCODE_CODE32:
         case BARCODE_CODABLOCKF:
+        case BARCODE_HIBC_BLOCKF:
             return 1;
     }
 
     return 0;
 }
 
-/* Indicates which symbols can have addon (EAN-2 and EAN-5) */
+/* Indicates which symbols can have addon (EAN-2 and EAN-5)
+ * Note: if change this must also change version in frontend/main.c */
 INTERNAL int is_extendable(const int symbology) {
-    if (symbology == BARCODE_EANX || symbology == BARCODE_EANX_CHK) {
-        return 1;
-    }
-    if (symbology == BARCODE_UPCA || symbology == BARCODE_UPCA_CHK) {
-        return 1;
-    }
-    if (symbology == BARCODE_UPCE || symbology == BARCODE_UPCE_CHK) {
-        return 1;
-    }
-    if (symbology == BARCODE_ISBNX) {
-        return 1;
-    }
-    if (symbology == BARCODE_UPCA_CC) {
-        return 1;
-    }
-    if (symbology == BARCODE_UPCE_CC) {
-        return 1;
-    }
-    if (symbology == BARCODE_EANX_CC) {
-        return 1;
+
+    switch (symbology) {
+        case BARCODE_EANX:
+        case BARCODE_EANX_CHK:
+        case BARCODE_UPCA:
+        case BARCODE_UPCA_CHK:
+        case BARCODE_UPCE:
+        case BARCODE_UPCE_CHK:
+        case BARCODE_ISBNX:
+        case BARCODE_EANX_CC:
+        case BARCODE_UPCA_CC:
+        case BARCODE_UPCE_CC:
+            return 1;
     }
 
     return 0;
@@ -255,21 +241,20 @@ INTERNAL int is_extendable(const int symbology) {
 
 /* Indicates which symbols can have composite 2D component data */
 INTERNAL int is_composite(int symbology) {
-    return symbology >= BARCODE_EANX_CC && symbology <= BARCODE_RSS_EXPSTACK_CC;
+    return symbology >= BARCODE_EANX_CC && symbology <= BARCODE_DBAR_EXPSTK_CC;
 }
 
-INTERNAL int istwodigits(const unsigned char source[], const size_t position) {
-    if ((source[position] >= '0') && (source[position] <= '9')) {
-        if ((source[position + 1] >= '0') && (source[position + 1] <= '9')) {
-            return 1;
-        }
+INTERNAL int istwodigits(const unsigned char source[], const int length, const int position) {
+    if ((position + 1 < length) && (source[position] >= '0') && (source[position] <= '9')
+            && (source[position + 1] >= '0') && (source[position + 1] <= '9')) {
+        return 1;
     }
 
     return 0;
 }
 
 /* State machine to decode UTF-8 to Unicode codepoints (state 0 means done, state 12 means error) */
-INTERNAL unsigned int decode_utf8(unsigned int* state, unsigned int* codep, const unsigned char byte) {
+INTERNAL unsigned int decode_utf8(unsigned int *state, unsigned int *codep, const unsigned char byte) {
     /*
         Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
 
@@ -372,8 +357,9 @@ INTERNAL void set_minimum_height(struct zint_symbol *symbol, const int min_heigh
 }
 
 /* Calculate optimized encoding modes. Adapted from Project Nayuki */
-INTERNAL void pn_define_mode(char* mode, const unsigned int data[], const size_t length, const int debug,
-        unsigned int state[], const char mode_types[], const int num_modes, pn_head_costs head_costs, pn_switch_cost switch_cost, pn_eod_cost eod_cost, pn_cur_cost cur_cost) {
+INTERNAL void pn_define_mode(char *mode, const unsigned int data[], const size_t length, const int debug,
+        unsigned int state[], const char mode_types[], const int num_modes,
+        pn_head_costs head_costs, pn_switch_cost switch_cost, pn_eod_cost eod_cost, pn_cur_cost cur_cost) {
     /*
      * Copyright (c) Project Nayuki. (MIT License)
      * https://www.nayuki.io/page/qr-code-generator-library
@@ -395,12 +381,12 @@ INTERNAL void pn_define_mode(char* mode, const unsigned int data[], const size_t
     char char_modes[length * num_modes];
     unsigned int cur_costs[num_modes];
 #else
-    unsigned int* prev_costs;
-    char* char_modes;
-    unsigned int* cur_costs;
-    prev_costs = (unsigned int*) _alloca(num_modes * sizeof(unsigned int));
-    char_modes = (char*) _alloca(length * num_modes);
-    cur_costs = (unsigned int*) _alloca(num_modes * sizeof(unsigned int));
+    unsigned int *prev_costs;
+    char *char_modes;
+    unsigned int *cur_costs;
+    prev_costs = (unsigned int *) _alloca(num_modes * sizeof(unsigned int));
+    char_modes = (char *) _alloca(length * num_modes);
+    cur_costs = (unsigned int *) _alloca(num_modes * sizeof(unsigned int));
 #endif
 
     /* char_modes[i * num_modes + j] represents the mode to encode the code point at index i such that the final
@@ -459,13 +445,13 @@ INTERNAL void pn_define_mode(char* mode, const unsigned int data[], const size_t
     }
 
     if (debug & ZINT_DEBUG_PRINT) {
-        printf("  Mode: %.*s\n", (int)length, mode);
+        printf("  Mode: %.*s\n", (int) length, mode);
     }
 }
 
 #ifdef ZINT_TEST
 /* Dumps hex-formatted codewords in symbol->errtxt (for use in testing) */
-void debug_test_codeword_dump(struct zint_symbol *symbol, unsigned char* codewords, int length) {
+void debug_test_codeword_dump(struct zint_symbol *symbol, unsigned char *codewords, int length) {
     int i, max = length, cnt_len = 0;
     if (length > 30) { /* 30*3 < errtxt 92 (100 - "Warning ") chars */
         sprintf(symbol->errtxt, "(%d) ", length); /* Place the number of codewords at the front */
@@ -478,7 +464,7 @@ void debug_test_codeword_dump(struct zint_symbol *symbol, unsigned char* codewor
     symbol->errtxt[strlen(symbol->errtxt) - 1] = '\0'; /* Zap last space */
 }
 
-void debug_test_codeword_dump_int(struct zint_symbol *symbol, int* codewords, int length) {
+void debug_test_codeword_dump_int(struct zint_symbol *symbol, int *codewords, int length) {
     int i, max = 0, cnt_len, errtxt_len;
     char temp[20];
     errtxt_len = sprintf(symbol->errtxt, "(%d) ", length); /* Place the number of codewords at the front */

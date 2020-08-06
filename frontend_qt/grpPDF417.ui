@@ -9,6 +9,12 @@
     <height>223</height>
    </rect>
   </property>
+  <property name="maximumSize">
+   <size>
+    <width>600</width>
+    <height>16777215</height>
+   </size>
+  </property>
   <property name="windowTitle" >
    <string>Form</string>
   </property>
@@ -159,76 +165,88 @@
        </item>
        <item>
         <property name="text" >
-         <string>2 words</string>
+         <string>0 (2 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>4 words</string>
+         <string>1 (4 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>8 words</string>
+         <string>2 (8 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>16 words</string>
+         <string>3 (16 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>32 words</string>
+         <string>4 (32 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>64 words</string>
+         <string>5 (64 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>128 words</string>
+         <string>6 (128 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>256 words</string>
+         <string>7 (256 words)</string>
         </property>
        </item>
        <item>
         <property name="text" >
-         <string>512 words</string>
+         <string>8 (512 words)</string>
         </property>
        </item>
-      </widget>
-     </item>
-     <item row="2" column="0" >
-      <widget class="QRadioButton" name="radPDFStand" >
-       <property name="text" >
-        <string>S&amp;tandard</string>
-       </property>
-       <property name="checked" >
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="2" column="1" >
-      <widget class="QRadioButton" name="radPDFHIBC" >
-       <property name="text" >
-        <string>&amp;HIBC PDF417</string>
-       </property>
-      </widget>
-     </item>
-     <item row="3" column="0" >
-      <widget class="QRadioButton" name="radPDFTruncated" >
-       <property name="text" >
-        <string>&amp;Truncated</string>
-       </property>
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxPDFEncodingMode">
+     <property name="title">
+      <string>Encoding Mode</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutPDFEncodingMode">
+      <property name="sizeConstraint">
+       <enum>QLayout::SetMinimumSize</enum>
+      </property>
+      <item row="0" column="0">
+       <widget class="QRadioButton" name="radPDFStand">
+        <property name="text">
+         <string>Standard Mode</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QRadioButton" name="radPDFHIBC">
+        <property name="text">
+         <string>HIBC PDF417</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QRadioButton" name="radPDFTruncated">
+        <property name="text">
+         <string>Compact PDF417</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer" >

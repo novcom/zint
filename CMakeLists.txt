@@ -4,23 +4,12 @@ cmake_minimum_required(VERSION 2.6)
 project(zint-package)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-if(WIN32)
-set(CMAKE_PREFIX_PATH "C:\\Qt\\5.12.3\\msvc2017\\lib\\cmake\\")
-set(ZLIB_INCLUDE_DIR "Z:\\work\\mednetclient\\extern\\include\\quazip\\")
-set(ZLIB_LIBRARY "Z:\\work\\mednetclient\\extern\\lib\\win\\i386\\hummuspdfwriter\\zlib.lib")
-set(PNG_PNG_INCLUDE_DIR "Z:\\work\\mednetclient\\extern\\include\\libpng\\")
-set(PNG_LIBRARY "Z:\\work\\mednetclient\\extern\\lib\\win\\i386\\libpng\\libpng.lib")
-endif()
-if(APPLE)
-set(CMAKE_PREFIX_PATH "/Users/admin/Qt/5.12.3/clang_64/lib/cmake/")
-endif()
-
 
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 #comment or remove the above line before release
 
 set (ZINT_VERSION_MAJOR 2)
-set (ZINT_VERSION_MINOR 8)
+set (ZINT_VERSION_MINOR 9)
 set (ZINT_VERSION_RELEASE 0)
 set (ZINT_VERSION "${ZINT_VERSION_MAJOR}.${ZINT_VERSION_MINOR}.${ZINT_VERSION_RELEASE}" )
 
@@ -108,7 +97,7 @@ if (Qt5Widgets_FOUND)
                 ${CMAKE_CURRENT_BINARY_DIR}
                 )
             add_subdirectory(backend_qt)
-          #  add_subdirectory(frontend_qt)
+            add_subdirectory(frontend_qt)
         endif(Qt5UiTools_FOUND)
     endif(Qt5Gui_FOUND)
 endif(Qt5Widgets_FOUND)
@@ -121,7 +110,7 @@ CONFIGURE_FILE(
 ADD_CUSTOM_TARGET(uninstall
   "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
 
-# staniek: don't install
+# staniek: don't install 
 if (DATA_INSTALL_DIR)
     set(CMAKE_MODULES_INSTALL_PATH ${DATA_INSTALL_DIR}/cmake/modules)
 else (DATA_INSTALL_DIR)
@@ -135,3 +124,5 @@ install(FILES cmake/modules/FindZint.cmake DESTINATION ${CMAKE_MODULES_INSTALL_P
 IF(NOT ZINT_HAS_BEEN_RUN_BEFORE)
     SET(ZINT_HAS_BEEN_RUN_BEFORE 1 CACHE INTERNAL "Flag to track whether this is the first time running CMake or if CMake has been configured before")
 ENDIF(NOT ZINT_HAS_BEEN_RUN_BEFORE)
+
+

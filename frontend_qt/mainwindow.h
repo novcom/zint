@@ -62,10 +62,12 @@ public:
         CODE49           = 24,
         CODE93           = 25,
         CODE_ONE         = 141,
+        DAFT             = 93,
         DATAMATRIX       = 71,
         DPIDENT          = 22,
         DPLEIT           = 21,
         DOTCODE          = 115,
+        DPD              = 96,
         KIX              = 90,
         EAN14            = 72,
         EANX             = 13,
@@ -79,8 +81,8 @@ public:
         RSS14STACK       = 79,
         RSS14STACK_OMNI  = 80,
         HANXIN           = 116,
-        ITF14            = 89,
         ISBNX            = 69,
+        ITF14            = 89,
         JAPANPOST        = 76,
         KOREAPOST        = 77,
         LOGMARS          = 50,
@@ -103,10 +105,11 @@ public:
         TELEPEN_NUM      = 87,
         PLESSEY          = 86,
         ULTRA            = 144,
-        UPNQR            = 143,
         UPCA             = 34,
         UPCE             = 37,
-        ONECODE          = 85
+        UPNQR            = 143,
+        ONECODE          = 85,
+        VIN              = 73
     };
 
 public:
@@ -127,6 +130,8 @@ public slots:
 
 protected:
     void resizeEvent(QResizeEvent *event);
+    void upcean_addon_gap(QComboBox *comboBox, QLabel* label, int base);
+    void set_gs1_mode(bool gs1_mode);
 
 private slots:
     bool save();

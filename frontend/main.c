@@ -18,6 +18,7 @@
     with this program; if not, write to the Free Software Foundation, Inc.,
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+/* vim: set ts=4 sw=4 et : */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,94 +37,97 @@
 #endif
 
 /* Print list of supported symbologies */
-void types(void) {
-    printf( " 1: Code 11           52: PZN                      97: Micro QR Code\n"
-            " 2: Standard 2of5     53: Pharma Two-Track         98: HIBC Code 128\n"
-            " 3: Interleaved 2of5  55: PDF417                   99: HIBC Code 39\n"
-            " 4: IATA 2of5         56: PDF417 Trunc            102: HIBC Data Matrix\n"
-            " 6: Data Logic        57: Maxicode                104: HIBC QR Code\n"
-            " 7: Industrial 2of5   58: QR Code                 106: HIBC PDF417\n"
-            " 8: Code 39           60: Code 128-B              108: HIBC MicroPDF417\n"
-            " 9: Extended Code 39  63: AP Standard Customer    110: HIBC Codablock-F\n"
-            "13: EAN               66: AP Reply Paid           112: HIBC Aztec Code\n"
-            "14: EAN + Check       67: AP Routing              115: DotCode\n"
-            "16: GS1-128           68: AP Redirection          116: Han Xin Code\n"
-            "18: Codabar           69: ISBN                    121: RM Mailmark\n"
-            "20: Code 128          70: RM4SCC                  128: Aztec Runes\n"
-            "21: Leitcode          71: Data Matrix             129: Code 32\n"
-            "22: Identcode         72: EAN-14                  130: Comp EAN\n"
-            "23: Code 16k          73: VIN (North America)     131: Comp GS1-128\n"
-            "24: Code 49           74: Codablock-F             132: Comp DataBar Omni\n"
-            "25: Code 93           75: NVE-18                  133: Comp DataBar Ltd\n"
-            "28: Flattermarken     76: Japanese Post           134: Comp DataBar ExpOm\n"
-            "29: GS1 DataBar Omni  77: Korea Post              135: Comp UPC-A\n"
-            "30: GS1 DataBar Ltd   79: GS1 DataBar Stack       136: Comp UPC-E\n"
-            "31: GS1 DataBar ExpOm 80: GS1 DataBar Stack Omni  137: Comp DataBar Stack\n"
-            "32: Telepen Alpha     81: GS1 DataBar ESO         138: Comp DataBar Stack Omni\n"
-            "34: UPC-A             82: Planet                  1139: Comp DataBar ESO\n"
-            "35: UPC-A + Check     84: MicroPDF                140: Channel Code\n"
-            "37: UPC-E             85: USPS OneCode            141: Code One\n"
-            "38: UPC-E + Check     86: UK Plessey              142: Grid Matrix\n"
-            "40: Postnet           87: Telepen Numeric         143: UPNQR\n"
-            "47: MSI Plessey       89: ITF-14                  144: Ultracode\n"
-            "49: FIM               90: KIX Code                145: rMQR\n"
-            "50: Logmars           92: Aztec Code\n"
+static void types(void) {
+    printf( " 1: Code 11           52: PZN                      96: DPD Code\n"
+            " 2: Standard 2of5     53: Pharma Two-Track         97: Micro QR Code\n"
+            " 3: Interleaved 2of5  55: PDF417                   98: HIBC Code 128\n"
+            " 4: IATA 2of5         56: Compact PDF417           99: HIBC Code 39\n"
+            " 6: Data Logic        57: Maxicode                102: HIBC Data Matrix\n"
+            " 7: Industrial 2of5   58: QR Code                 104: HIBC QR Code\n"
+            " 8: Code 39           60: Code 128-B              106: HIBC PDF417\n"
+            " 9: Extended Code 39  63: AP Standard Customer    108: HIBC MicroPDF417\n"
+            "13: EAN               66: AP Reply Paid           110: HIBC Codablock-F\n"
+            "14: EAN + Check       67: AP Routing              112: HIBC Aztec Code\n"
+            "16: GS1-128           68: AP Redirection          115: DotCode\n"
+            "18: Codabar           69: ISBN                    116: Han Xin Code\n"
+            "20: Code 128          70: RM4SCC                  121: RM Mailmark\n"
+            "21: Leitcode          71: Data Matrix             128: Aztec Runes\n"
+            "22: Identcode         72: EAN-14                  129: Code 32\n"
+            "23: Code 16k          73: VIN                     130: Comp EAN\n"
+            "24: Code 49           74: Codablock-F             131: Comp GS1-128\n"
+            "25: Code 93           75: NVE-18                  132: Comp DataBar Omni\n"
+            "28: Flattermarken     76: Japanese Post           133: Comp DataBar Ltd\n"
+            "29: GS1 DataBar Omni  77: Korea Post              134: Comp DataBar Exp\n"
+            "30: GS1 DataBar Ltd   79: GS1 DataBar Stack       135: Comp UPC-A\n"
+            "31: GS1 DataBar Exp   80: GS1 DataBar Stack Omni  136: Comp UPC-E\n"
+            "32: Telepen Alpha     81: GS1 DataBar Exp Stack   137: Comp DataBar Stack\n"
+            "34: UPC-A             82: Planet                  138: Comp DataBar Stack Omni\n"
+            "35: UPC-A + Check     84: MicroPDF                139: Comp DataBar Exp Stack\n"
+            "37: UPC-E             85: USPS Intelligent Mail   140: Channel Code\n"
+            "38: UPC-E + Check     86: UK Plessey              141: Code One\n"
+            "40: Postnet           87: Telepen Numeric         142: Grid Matrix\n"
+            "47: MSI Plessey       89: ITF-14                  143: UPNQR\n"
+            "49: FIM               90: KIX Code                144: Ultracode\n"
+            "50: Logmars           92: Aztec Code              145: rMQR\n"
             "51: Pharma One-Track  93: DAFT Code\n"
             );
 }
 
 /* Output usage information */
-void usage(void) {
+static void usage(void) {
     printf( "Zint version %d.%d.%d\n"
-            "Encode input data in a barcode and save as BMP/EMF/EPS/GIF/PCX/PNG/SVG/TIF\n\n"
-            "  -b, --barcode=NUMBER  Number of barcode type (default is 20 (=Code128)).\n"
+            "Encode input data in a barcode and save as BMP/EMF/EPS/GIF/PCX/PNG/SVG/TIF/TXT\n\n"
+            "  -b, --barcode=NUMBER  Number of barcode type. Default is 20 (Code 128)\n"
+            "  --addongap=NUMBER     Set add-on gap in multiples of X-dimension for UPC/EAN\n"
             "  --batch               Treat each line of input file as a separate data set\n"
             "  --bg=COLOUR           Specify a background colour (in hex)\n"
             "  --binary              Treat input as raw binary data\n"
             "  --bind                Add boundary bars\n"
             "  --bold                Use bold text\n"
-            "  --border=NUMBER       Set width of border in multiples of x-dimension\n"
+            "  --border=NUMBER       Set width of border in multiples of X-dimension\n"
             "  --box                 Add a box around the symbol\n"
             "  --cmyk                Use CMYK colour space in EPS symbols\n"
             "  --cols=NUMBER         Set the number of data columns in symbol\n"
             "  -d, --data=DATA       Set the symbol content\n"
             "  --direct              Send output to stdout\n"
+            "  --dmre                Allow Data Matrix Rectangular Extended\n"
             "  --dotsize=NUMBER      Set radius of dots in dotty mode\n"
             "  --dotty               Use dots instead of squares for matrix symbols\n"
-            "  --dmre                Allow Data Matrix Rectangular Extended\n"
             "  --dump                Dump hexadecimal representation to stdout\n"
             "  -e, --ecinos          Display table of ECI character encodings\n"
-            "  --eci=NUMBER          Set the ECI mode for raw data\n"
+            "  --eci=NUMBER          Set the ECI (Extended Channel Interpretation) code\n"
             "  --esc                 Process escape characters in input data\n"
-            "  --filetype=TYPE       Set output file type (PNG/EPS/SVG/PNG/EPS/GIF/TXT)\n"
             "  --fg=COLOUR           Specify a foreground colour (in hex)\n"
-            "  --fullmultibyte       Use multibyte mode for binary and Latin (QR Code/Han Xin/Grid Matrix)\n"
+            "  --filetype=TYPE       Set output file type BMP/EMF/EPS/GIF/PCX/PNG/SVG/TIF/TXT\n"
+            "  --fullmultibyte       Use multibyte for binary/Latin (QR/Han Xin/Grid Matrix)\n"
             "  --gs1                 Treat input as GS1 compatible data\n"
-            "  --gssep               Use separator GS for GS1\n"
+            "  --gssep               Use separator GS for GS1 (Data Matrix)\n"
             "  -h, --help            Display help message\n"
-            "  --height=NUMBER       Set height of symbol in multiples of x-dimension\n"
+            "  --height=NUMBER       Set height of symbol in multiples of X-dimension\n"
             "  -i, --input=FILE      Read input data from FILE\n"
             "  --init                Create reader initialisation/programming symbol\n"
             "  --mirror              Use batch data to determine filename\n"
             "  --mode=NUMBER         Set encoding mode (Maxicode/Composite)\n"
+            "  --nobackground        Remove background (PNG/SVG/EPS only)\n"
             "  --notext              Remove human readable text\n"
-            "  -o, --output=FILE     Send output to FILE. (default is out.png)\n"
+            "  -o, --output=FILE     Send output to FILE. Default is out.png\n"
             "  --primary=STRING      Set structured primary message (Maxicode/Composite)\n"
-            "  --secure=NUMBER       Set error correction level\n"
-            "  --scale=NUMBER        Adjust size of x-dimension\n"
-            "  --small               Use half-size text in PNG images\n"
+            "  --scale=NUMBER        Adjust size of X-dimension\n"
+            "  --secure=NUMBER       Set error correction level (ECC)\n"
+            "  --separator=NUMBER    Set height of row separator bars (stacked symbologies)\n"
+            "  --small               Use small text\n"
             "  --square              Force Data Matrix symbols to be square\n"
             "  -r, --reverse         Reverse colours (white on black)\n"
-            "  --rotate=NUMBER       Rotate symbol by NUMBER degrees (PNG/BMP/PCX)\n"
+            "  --rotate=NUMBER       Rotate symbol by NUMBER degrees (BMP/GIF/PCX/PNG/TIF)\n"
             "  --rows=NUMBER         Set number of rows (Codablock-F)\n"
             "  -t, --types           Display table of barcode types\n"
-            "  --vers=NUMBER         Set symbol version (QR Code/Han Xin)\n"
-            "  -w, --whitesp=NUMBER  Set Width of whitespace in multiples of x-dimension\n"
+            "  --vers=NUMBER         Set symbol version (size, check digits, other options)\n"
+            "  -w, --whitesp=NUMBER  Set width of whitespace in multiples of X-dimension\n"
             , ZINT_VERSION_MAJOR, ZINT_VERSION_MINOR, ZINT_VERSION_RELEASE);
 }
 
 /* Display supported ECI codes */
-void show_eci(void) {
+static void show_eci(void) {
     printf( " 3: ISO-8859-1 - Latin alphabet No. 1 (default)\n"
             " 4: ISO-8859-2 - Latin alphabet No. 2\n"
             " 5: ISO-8859-3 - Latin alphabet No. 3\n"
@@ -155,7 +159,7 @@ void show_eci(void) {
 }
 
 /* Verifies that a string only uses valid characters */
-int validator(char test_string[], char source[]) {
+static int validator(char test_string[], char source[]) {
     unsigned int i, j;
 
     for (i = 0; i < strlen(source); i++) {
@@ -193,7 +197,7 @@ static void concat(char dest[], char source[]) {
     }
 }
 
-int batch_process(struct zint_symbol *symbol, char *filename, int mirror_mode, char *filetype, int rotate_angle) {
+static int batch_process(struct zint_symbol *symbol, char *filename, int mirror_mode, char *filetype, int rotate_angle) {
     FILE *file;
     unsigned char buffer[7100];
     unsigned char character = 0;
@@ -379,18 +383,64 @@ int batch_process(struct zint_symbol *symbol, char *filename, int mirror_mode, c
     return error_number;
 }
 
-int is_fullmultibyte(struct zint_symbol* symbol) {
-	switch (symbol->symbology) {
-		case BARCODE_QRCODE:
-		case BARCODE_MICROQR:
-		//case BARCODE_HIBC_QR: Note character set restricted to ASCII subset
-		//case BARCODE_UPNQR: Note does not use Kanji mode
-		case BARCODE_RMQR:
-		case BARCODE_HANXIN:
-		case BARCODE_GRIDMATRIX:
-			return 1;
-	}
-	return 0;
+static int is_fullmultibyte(struct zint_symbol* symbol) {
+    switch (symbol->symbology) {
+        case BARCODE_QRCODE:
+        case BARCODE_MICROQR:
+        //case BARCODE_HIBC_QR: Note character set restricted to ASCII subset
+        //case BARCODE_UPNQR: Note does not use Kanji mode
+        case BARCODE_RMQR:
+        case BARCODE_HANXIN:
+        case BARCODE_GRIDMATRIX:
+            return 1;
+    }
+    return 0;
+}
+
+/* Indicates which symbologies can have row binding
+ * Note: if change this must also change version in backend/common.c */
+static int is_stackable(const int symbology) {
+    if (symbology < BARCODE_PDF417) {
+        return 1;
+    }
+
+    switch (symbology) {
+        case BARCODE_CODE128B:
+        case BARCODE_ISBNX:
+        case BARCODE_EAN14:
+        case BARCODE_NVE18:
+        case BARCODE_KOREAPOST:
+        case BARCODE_PLESSEY:
+        case BARCODE_TELEPEN_NUM:
+        case BARCODE_ITF14:
+        case BARCODE_CODE32:
+        case BARCODE_CODABLOCKF:
+        case BARCODE_HIBC_BLOCKF:
+            return 1;
+    }
+
+    return 0;
+}
+
+/* Indicates which symbols can have addon (EAN-2 and EAN-5)
+ * Note: if change this must also change version in backend/common.c */
+static int is_extendable(const int symbology) {
+
+    switch (symbology) {
+        case BARCODE_EANX:
+        case BARCODE_EANX_CHK:
+        case BARCODE_UPCA:
+        case BARCODE_UPCA_CHK:
+        case BARCODE_UPCE:
+        case BARCODE_UPCE_CHK:
+        case BARCODE_ISBNX:
+        case BARCODE_EANX_CC:
+        case BARCODE_UPCA_CC:
+        case BARCODE_UPCE_CC:
+            return 1;
+    }
+
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -400,7 +450,9 @@ int main(int argc, char **argv) {
     int generated;
     int batch_mode;
     int mirror_mode;
-	int fullmultibyte;
+    int fullmultibyte;
+    int separator;
+    int addon_gap;
     char filetype[4];
     int i;
 
@@ -412,6 +464,8 @@ int main(int argc, char **argv) {
     batch_mode = 0;
     mirror_mode = 0;
     fullmultibyte = 0;
+    separator = 0;
+    addon_gap = 0;
 
     for (i = 0; i < 4; i++) {
         filetype[i] = '\0';
@@ -450,10 +504,12 @@ int main(int argc, char **argv) {
             {"mode", 1, 0, 0},
             {"primary", 1, 0, 0},
             {"scale", 1, 0, 0},
+            {"separator", 1, 0, 0},
             {"gs1", 0, 0, 0},
             {"gssep", 0, 0, 0},
             {"binary", 0, 0, 0},
             {"fullmultibyte", 0, 0, 0},
+            {"nobackground", 0, 0, 0},
             {"notext", 0, 0, 0},
             {"square", 0, 0, 0},
             {"dmre", 0, 0, 0},
@@ -461,6 +517,7 @@ int main(int argc, char **argv) {
             {"small", 0, 0, 0},
             {"bold", 0, 0, 0},
             {"cmyk", 0, 0, 0},
+            {"addongap", 1, 0, 0},
             {"batch", 0, 0, 0},
             {"mirror", 0, 0, 0},
             {"dotty", 0, 0, 0},
@@ -519,10 +576,10 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "fg")) {
-                    strncpy(my_symbol->fgcolour, optarg, 7);
+                    strncpy(my_symbol->fgcolour, optarg, 9);
                 }
                 if (!strcmp(long_options[option_index].name, "bg")) {
-                    strncpy(my_symbol->bgcolour, optarg, 7);
+                    strncpy(my_symbol->bgcolour, optarg, 9);
                 }
                 if (!strcmp(long_options[option_index].name, "fullmultibyte")) {
                     fullmultibyte = 1;
@@ -547,6 +604,33 @@ int main(int argc, char **argv) {
                         my_symbol->scale = 1.0;
                     }
                 }
+                if (!strcmp(long_options[option_index].name, "separator")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 128: Invalid separator value\n");
+                        exit(1);
+                    }
+                    separator = atoi(optarg);
+                    if (separator < 0 || separator > 4) {
+                        /* Negative and greater than 4 values are not permitted */
+                        fprintf(stderr, "Warning 127: Invalid separator value\n");
+                        fflush(stderr);
+                        separator = 0;
+                    }
+                }
+                if (!strcmp(long_options[option_index].name, "addongap")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 139: Invalid add-on gap value\n");
+                        exit(1);
+                    }
+                    addon_gap = atoi(optarg);
+                    if (addon_gap < 7 || addon_gap > 12) {
+                        fprintf(stderr, "Warning 140: Invalid add-on gap value\n");
+                        fflush(stderr);
+                        addon_gap = 0;
+                    }
+                }
                 if (!strcmp(long_options[option_index].name, "dotsize")) {
                     my_symbol->dot_size = (float) (atof(optarg));
                     if (my_symbol->dot_size < 0.01) {
@@ -559,7 +643,7 @@ int main(int argc, char **argv) {
                 if (!strcmp(long_options[option_index].name, "border")) {
                     error_number = validator(NESET, optarg);
                     if (error_number == ZINT_ERROR_INVALID_DATA) {
-                        fprintf(stderr, "Error 107: Invalid border width\n");
+                        fprintf(stderr, "Error 107: Invalid border width value\n");
                         exit(1);
                     }
                     if ((atoi(optarg) >= 0) && (atoi(optarg) <= 1000)) {
@@ -572,7 +656,7 @@ int main(int argc, char **argv) {
                 if (!strcmp(long_options[option_index].name, "height")) {
                     error_number = validator(NESET, optarg);
                     if (error_number == ZINT_ERROR_INVALID_DATA) {
-                        fprintf(stderr, "Error 109: Invalid symbol height\n");
+                        fprintf(stderr, "Error 109: Invalid symbol height value\n");
                         exit(1);
                     }
                     if ((atoi(optarg) >= 1) && (atoi(optarg) <= 1000)) {
@@ -584,7 +668,12 @@ int main(int argc, char **argv) {
                 }
 
                 if (!strcmp(long_options[option_index].name, "cols")) {
-                    if ((atoi(optarg) >= 1) && (atoi(optarg) <= 66)) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 131: Invalid columns value\n");
+                        exit(1);
+                    }
+                    if ((atoi(optarg) >= 1) && (atoi(optarg) <= 67)) {
                         my_symbol->option_2 = atoi(optarg);
                     } else {
                         fprintf(stderr, "Warning 111: Number of columns out of range\n");
@@ -592,6 +681,11 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "rows")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 132: Invalid rows value\n");
+                        exit(1);
+                    }
                     if ((atoi(optarg) >= 1) && (atoi(optarg) <= 44)) {
                         my_symbol->option_1 = atoi(optarg);
                     } else {
@@ -600,15 +694,25 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "vers")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 133: Invalid version value\n");
+                        exit(1);
+                    }
                     if ((atoi(optarg) >= 1) && (atoi(optarg) <= 84)) {
                         my_symbol->option_2 = atoi(optarg);
                     } else {
-                        fprintf(stderr, "Warning 113: Invalid Version\n");
+                        fprintf(stderr, "Warning 113: Invalid version\n");
                         fflush(stderr);
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "secure")) {
-                    if ((atoi(optarg) >= 1) && (atoi(optarg) <= 8)) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 134: Invalid ECC value\n");
+                        exit(1);
+                    }
+                    if ((atoi(optarg) >= 0) && (atoi(optarg) <= 8)) {
                         my_symbol->option_1 = atoi(optarg);
                     } else {
                         fprintf(stderr, "Warning 114: ECC level out of range\n");
@@ -616,16 +720,21 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "primary")) {
-                    if (strlen(optarg) <= 90) {
+                    if (strlen(optarg) <= 127) {
                         strcpy(my_symbol->primary, optarg);
                     } else {
-                        fprintf(stderr, "Error 115: Primary data string too long");
+                        fprintf(stderr, "Error 115: Primary data string too long\n");
                         fflush(stderr);
                     }
                 }
                 if (!strcmp(long_options[option_index].name, "mode")) {
-                    if ((optarg[0] >= '0') && (optarg[0] <= '6')) {
-                        my_symbol->option_1 = optarg[0] - '0';
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 136: Invalid mode value\n");
+                        exit(1);
+                    }
+                    if ((atoi(optarg) >= 0) && (atoi(optarg) <= 6)) {
+                        my_symbol->option_1 = atoi(optarg);
                     } else {
                         fprintf(stderr, "Warning 116: Invalid mode\n");
                         fflush(stderr);
@@ -635,7 +744,7 @@ int main(int argc, char **argv) {
                     /* Only certain inputs allowed */
                     error_number = validator(NESET, optarg);
                     if (error_number == ZINT_ERROR_INVALID_DATA) {
-                        fprintf(stderr, "Error 117: Invalid rotation parameter\n");
+                        fprintf(stderr, "Error 117: Invalid rotation value\n");
                         exit(1);
                     }
                     switch (atoi(optarg)) {
@@ -645,7 +754,11 @@ int main(int argc, char **argv) {
                             break;
                         case 270: rotate_angle = 270;
                             break;
-                        default: rotate_angle = 0;
+                        case 0: rotate_angle = 0;
+                            break;
+                        default:
+                            fprintf(stderr, "Warning 137: Invalid rotation parameter\n");
+                            fflush(stderr);
                             break;
                     }
                 }
@@ -662,6 +775,11 @@ int main(int argc, char **argv) {
                     strncpy(filetype, optarg, (size_t) 3);
                 }
                 if (!strcmp(long_options[option_index].name, "eci")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 138: Invalid ECI value\n");
+                        exit(1);
+                    }
                     if ((atoi(optarg) >= 0) && (atoi(optarg) <= 999999)) {
                         my_symbol->eci = atoi(optarg);
                     } else {
@@ -678,12 +796,20 @@ int main(int argc, char **argv) {
                     my_symbol->debug = 1;
                 }
                 if (!strcmp(long_options[option_index].name, "fontsize")) {
+                    error_number = validator(NESET, optarg);
+                    if (error_number == ZINT_ERROR_INVALID_DATA) {
+                        fprintf(stderr, "Error 130: Invalid font size value\n");
+                        exit(1);
+                    }
                     if ((atoi(optarg) >= 0) && (atoi(optarg) <= 100)) {
                         my_symbol->fontsize = atoi(optarg);
                     } else {
-                        fprintf(stderr, "Warning 125: Invalid font size\n");
+                        fprintf(stderr, "Warning 126: Invalid font size\n");
                         fflush(stderr);
                     }
+                }
+                if (!strcmp(long_options[option_index].name, "nobackground")) {
+                    strcpy(my_symbol->bgcolour, "ffffff00");
                 }
                 break;
 
@@ -717,7 +843,7 @@ int main(int argc, char **argv) {
                 if ((atoi(optarg) >= 0) && (atoi(optarg) <= 1000)) {
                     my_symbol->whitespace_width = atoi(optarg);
                 } else {
-                    fprintf(stderr, "Warning 121: Whitespace value out of range");
+                    fprintf(stderr, "Warning 121: Whitespace value out of range\n");
                     fflush(stderr);
                 }
                 break;
@@ -728,9 +854,14 @@ int main(int argc, char **argv) {
                         strcat(my_symbol->outfile, ".");
                         strcat(my_symbol->outfile, filetype);
                     }
-					if (fullmultibyte && is_fullmultibyte(my_symbol)) {
-						my_symbol->option_3 = ZINT_FULL_MULTIBYTE;
-					}
+                    if (fullmultibyte && is_fullmultibyte(my_symbol)) {
+                        my_symbol->option_3 = ZINT_FULL_MULTIBYTE;
+                    } else if (separator && is_stackable(my_symbol->symbology)) {
+                        my_symbol->option_3 = separator;
+                    }
+                    if (addon_gap && is_extendable(my_symbol->symbology)) {
+                        my_symbol->option_2 = addon_gap;
+                    }
                     error_number = ZBarcode_Encode(my_symbol, (unsigned char*) optarg, strlen(optarg));
                     generated = 1;
                     if (error_number != 0) {
@@ -748,15 +879,17 @@ int main(int argc, char **argv) {
                         }
                     }
                 } else {
-                    fprintf(stderr, "Warning 122: Can't define data in batch mode");
+                    fprintf(stderr, "Warning 122: Can't define data in batch mode\n");
                     fflush(stderr);
                 }
                 break;
 
             case 'i': /* Take data from file */
-				if (fullmultibyte && is_fullmultibyte(my_symbol)) {
-					my_symbol->option_3 = ZINT_FULL_MULTIBYTE;
-				}
+                if (fullmultibyte && is_fullmultibyte(my_symbol)) {
+                    my_symbol->option_3 = ZINT_FULL_MULTIBYTE;
+                } else if (separator && is_stackable(my_symbol->symbology)) {
+                    my_symbol->option_3 = separator;
+                }
                 if (batch_mode == 0) {
                     error_number = ZBarcode_Encode_File(my_symbol, optarg);
                     generated = 1;
@@ -824,4 +957,3 @@ int main(int argc, char **argv) {
 
     return error_number;
 }
-

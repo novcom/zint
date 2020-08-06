@@ -39,40 +39,67 @@
  2016-10-14 2.5.2 HaO
 -   Include the upstream reverted image format
  2016-12-12 2.5.3 HaO
--	No changes here, take 2.5.1 framework files
+-   No changes here, take 2.5.1 framework files
  2017-05-12 2.6.0 HaO
--	No changes here, take 2.6 framework files
+-   No changes here, take 2.6 framework files
  2017-08-29 2.6.1 HaO
--	Framework 2.6.1 extensions
--	EAN/UPC Codes with included check digit
--	UPNQR Code
--	Misspelled symbology: AztecRunes
+-   Framework 2.6.1 extensions
+-   EAN/UPC Codes with included check digit
+-   UPNQR Code
+-   Misspelled symbology: AztecRunes
  2017-10-23 2.6.2 HaO
--	Framework 2.6.2 bugfixes
+-   Framework 2.6.2 bugfixes
 -   Allow dll unload
  2018-02-13 2.6.3 HaO
- -	Framework trunk update
- -	Added VIN and MailMark symbologies.
+ -  Framework trunk update
+ -  Added VIN and MailMark symbologies.
  2018-11-02 2.6.4 HaO
- -	Framework trunk update
- -	Add options -bold, -dotted, -dotsize, -dmre, -eci
- -	Implemented ECI logic
+ -  Framework trunk update
+ -  Add options -bold, -dotted, -dotsize, -dmre, -eci
+ -  Implemented ECI logic
  2019-09-01 2.6.5 HaO
- -	Framework 2.6.5 update
- -	Add option -gssep
+ -  Framework 2.6.5 update
+ -  Add option -gssep
  2019-09-18 2.6.6 HaO
- -	Framework 2.6.6 update
+ -  Framework 2.6.6 update
  2019-10-07 2.6.7 HaO
- -	Framework 2.6.7 update
+ -  Framework 2.6.7 update
  2019-12-05 2.7.0 HaO
- -	Framework 2.7.0 update
+ -  Framework 2.7.0 update
  -  Add symbology rmqr
  2020-02-01 2.7.1 HaO
- -	Framework 2.7.1 update
+ -  Framework 2.7.1 update
  2020-04-06 HaO
- -	Added option -fullmultibyte
+ -  Added option -fullmultibyte
  2020-04-07 2.8.0 HaO
  - Added symbology "UltraCode".
+ 2020-05-19 HaO
+ - Added option -separator to specify stacked symbology separator width
+ - -cols maximum changed from 66 to 67
+ 2020-07-27 2.9.0 HaO
+ - added option "-addongap"
+ - Renamed symbology names:
+    - Matrix2of5 -> Standard2of5
+    - PDF417Trunc -> PDF417Compact
+    - RSS14Stacked -> GS1DataBarStacked
+    - RSS14Stacked -> GS1DataBarStacked
+    - RSS14StackedOmni -> GS1DataBarSstackedOmni
+    - RSS14ExpandedStacked -> GS1DataBarExpandedStacked
+    - OneCode -> USPSIntelligentMail
+    - EAN128-CC -> GS1-128-CC
+    - RSS14-CC -> GS1DataBarOmni-CC
+    - RSSLimited-CC -> GS1DataBarLimited-CC
+    - RSSExpandedStacked-CC -> GS1DataBarExpanded-CC
+    - RSSEXPanded-CC -> GS1DataBarExpanded-CC
+    - RSS14Stacked-CC -> GS1DataBarStacked-CC
+    - RSS14Omni-CC -> GS1DataBarStackedOmni-CC
+    - RSSExpandedStacked-CC -> GS1DataBarExpandedStacked-CC
+    *** Potential incompatibility ***
+2020-08-04 2.10.0 HaO
+- added symbology "DPDCode"
+- Alpha channel support added:
+    - added option -nobackground
+    - also allow RRGGBBAA for -fg and -bg options
 */
 
 #if defined(__WIN32__) || defined(_WIN32) || defined(WIN32)
@@ -112,7 +139,7 @@
 /*----------------------------------------------------------------------------*/
 /* > File option defines */
 
-#define VERSION "2.8.0"
+#define VERSION "2.9.0"
 
 /*----------------------------------------------------------------------------*/
 /* >>>>> Hepler defines */
@@ -129,6 +156,9 @@ static int Zint(ClientData unused, Tcl_Interp *interp, int objc,
     Tcl_Obj *CONST objv[]);
 static int Encode(Tcl_Interp *interp, int objc,
     Tcl_Obj *CONST objv[]);
+static int is_fullmultibyte(struct zint_symbol* symbol);
+static int is_stackable(const int symbology);
+static int is_extendable(const int symbology);
 /*----------------------------------------------------------------------------*/
 /* >>>> File Global Variables */
 
@@ -136,7 +166,7 @@ static int Encode(Tcl_Interp *interp, int objc,
 
 static char *s_code_list[] = {
     "Code11",
-    "Matrix2of5",
+    "Standard2of5",
     "Interleaved2of5",
     "IATAC2of5",
     "Logic2of5",
@@ -144,7 +174,7 @@ static char *s_code_list[] = {
     "Code39",
     "Code39Extended",
     "EAN",
-	"EAN+Check",
+    "EAN+Check",
     "GS1-128",
     "Codabar",
     "Code128",
@@ -159,7 +189,7 @@ static char *s_code_list[] = {
     "GS1DataBarExpanded",
     "Telepen",
     "UPC-A",
-	"UPC-A+Check",
+    "UPC-A+Check",
     "UPC-E",
     "UPC-E+Check",
     "Postnet",
@@ -170,7 +200,7 @@ static char *s_code_list[] = {
     "PZN",
     "PharmaTwo",
     "PDF417",
-    "PDF417Truncated",
+    "PDF417Compact",
     "MaxiCode",
     "QR",
     "Code128B",
@@ -182,17 +212,18 @@ static char *s_code_list[] = {
     "RM4SCC",
     "Datamatrix",
     "EAN14",
-	"VIN",
+    "VIN",
     "CodablockF",
     "NVE18",
     "JapanPost",
     "KoreaPost",
-    "RSS14Stacked",
-    "RSS14SstackedOmni",
-    "RSSExpandedStacked",
+    "GS1DataBarStacked",
+    "GS1DataBarSstackedOmni",
+    "GS1DataBarExpandedStacked",
     "Planet",
+    "DPDCode",
     "MicroPDF417",
-    "OneCode",
+    "USPSIntelligentMail",
     "Plessey",
     "TelepenNum",
     "ITF14",
@@ -208,32 +239,32 @@ static char *s_code_list[] = {
     "HIBC-MicroPDF",
     "HIBC-CodablockF",
     "HIBCAztec",
-	"DotCode",
-	"HanXin",
-	"MailMark",
+    "DotCode",
+    "HanXin",
+    "MailMark",
     "AztecRunes",
     "Code32",
     "EAN-CC",
-    "EAN128-CC",
-    "RSS14-CC",
-    "RSSLimited-CC",
-    "RSSEXPanded-CC",
+    "GS1-128-CC",
+    "GS1DataBarOmni-CC",
+    "GS1DataBarLimited-CC",
+    "GS1DataBarExpanded-CC",
     "UPCA-CC",
     "UPCE-CC",
-    "RSS14Stacked-CC",
-    "RSS14Omni-CC",
-    "RSSExpandedStacked-CC",
+    "GS1DataBarStacked-CC",
+    "GS1DataBarStackedOmni-CC",
+    "GS1DataBarExpandedStacked-CC",
     "Channel",
     "CodeOne",
     "GridMatrix",
     "UPNQR",
-	"UltraCode",
+    "UltraCode",
     "rMQR",
     NULL};
 
 static int s_code_number[] = {
     BARCODE_CODE11,
-    BARCODE_C25MATRIX,
+    BARCODE_C25STANDARD,
     BARCODE_C25INTER,
     BARCODE_C25IATA,
     BARCODE_C25LOGIC,
@@ -241,8 +272,8 @@ static int s_code_number[] = {
     BARCODE_CODE39,
     BARCODE_EXCODE39,
     BARCODE_EANX,
-	BARCODE_EANX_CHK,
-    BARCODE_EAN128,
+    BARCODE_EANX_CHK,
+    BARCODE_GS1_128,
     BARCODE_CODABAR,
     BARCODE_CODE128,
     BARCODE_DPLEIT,
@@ -251,12 +282,12 @@ static int s_code_number[] = {
     BARCODE_CODE49,
     BARCODE_CODE93,
     BARCODE_FLAT,
-    BARCODE_RSS14,
-    BARCODE_RSS_LTD,
-    BARCODE_RSS_EXP,
+    BARCODE_DBAR_OMN,
+    BARCODE_DBAR_LTD,
+    BARCODE_DBAR_EXP,
     BARCODE_TELEPEN,
     BARCODE_UPCA,
-	BARCODE_UPCA_CHK,
+    BARCODE_UPCA_CHK,
     BARCODE_UPCE,
     BARCODE_UPCE_CHK,
     BARCODE_POSTNET,
@@ -267,7 +298,7 @@ static int s_code_number[] = {
     BARCODE_PZN,
     BARCODE_PHARMA_TWO,
     BARCODE_PDF417,
-    BARCODE_PDF417TRUNC,
+    BARCODE_PDF417COMP,
     BARCODE_MAXICODE,
     BARCODE_QRCODE,
     BARCODE_CODE128B,
@@ -279,17 +310,18 @@ static int s_code_number[] = {
     BARCODE_RM4SCC,
     BARCODE_DATAMATRIX,
     BARCODE_EAN14,
-	BARCODE_VIN,
+    BARCODE_VIN,
     BARCODE_CODABLOCKF,
     BARCODE_NVE18,
     BARCODE_JAPANPOST,
     BARCODE_KOREAPOST,
-    BARCODE_RSS14STACK,
-    BARCODE_RSS14STACK_OMNI,
-    BARCODE_RSS_EXPSTACK,
+    BARCODE_DBAR_STK,
+    BARCODE_DBAR_OMNSTK,
+    BARCODE_DBAR_EXPSTK,
     BARCODE_PLANET,
+    BARCODE_DPD,
     BARCODE_MICROPDF417,
-    BARCODE_ONECODE,
+    BARCODE_USPS_IMAIL,
     BARCODE_PLESSEY,
     BARCODE_TELEPEN_NUM,
     BARCODE_ITF14,
@@ -305,26 +337,26 @@ static int s_code_number[] = {
     BARCODE_HIBC_MICPDF,
     BARCODE_HIBC_BLOCKF,
     BARCODE_HIBC_AZTEC,
-	BARCODE_DOTCODE,
-	BARCODE_HANXIN,
-	BARCODE_MAILMARK,
+    BARCODE_DOTCODE,
+    BARCODE_HANXIN,
+    BARCODE_MAILMARK,
     BARCODE_AZRUNE,
     BARCODE_CODE32,
     BARCODE_EANX_CC,
-    BARCODE_EAN128_CC,
-    BARCODE_RSS14_CC,
-    BARCODE_RSS_LTD_CC,
-    BARCODE_RSS_EXP_CC,
+    BARCODE_GS1_128_CC,
+    BARCODE_DBAR_OMN_CC,
+    BARCODE_DBAR_LTD_CC,
+    BARCODE_DBAR_EXP_CC,
     BARCODE_UPCA_CC,
     BARCODE_UPCE_CC,
-    BARCODE_RSS14STACK_CC,
-    BARCODE_RSS14_OMNI_CC,
-    BARCODE_RSS_EXPSTACK_CC,
+    BARCODE_DBAR_STK_CC,
+    BARCODE_DBAR_OMNSTK_CC,
+    BARCODE_DBAR_EXPSTK_CC,
     BARCODE_CHANNEL,
     BARCODE_CODEONE,
     BARCODE_GRIDMATRIX,
     BARCODE_UPNQR,
-	BARCODE_ULTRA,
+    BARCODE_ULTRA,
     BARCODE_RMQR,
     0};
 
@@ -359,7 +391,7 @@ static char *s_eci_list[] = {
     "big5",         /*28: ** Big-5 (Taiwan) Chinese Character Set*/
     "euc-cn",       /*29: ** GB (PRC) Chinese Character Set*/
     "iso2022-kr",   /*30: ** Korean Character Set (KSX1001:1998)*/
-	NULL
+    NULL
 };
 
 /* The ECI numerical number to pass to ZINT */
@@ -387,18 +419,21 @@ static char help_message[] = "zint tcl(stub,obj) dll\n"
     "  data: data to encode in the symbol\n"
     "  photo: a tcl photo image handle ('p' after 'image create photo p')\n"
     "  Available options:\n"
+    "   -addongap number: (7..12, default: 9) set add-on gap in multiple of module size (UPC/EAN-CC)\n"
     "   -barcode choice: symbology, use 'zint symbology' to get a list\n"
     "   -bind bool: bars above/below the code, size set by -border\n"
     "   -border integer: width of a border around the symbol. Use with -bind/-box 1\n"
     "   -box bool: box around bar code, size set be -border\n"
     "   -height integer: Symbol height in modules\n"
     "   -whitesp integer: horizontal quiet zone in modules\n"
-    "   -fg color: set foreground color as 6 hex rrggbb\n"
-    "   -bg color: set background color as 6 hex rrggbb\n"
+    "   -fg color: set foreground color as 6 or 8 hex rrggbbaa\n"
+    "   -bg color: set background color as 6 or 8 hex rrggbbaa\n"
+    "   -nobackground bool: set background transparent\n"
     "   -cols integer: PDF417, Codablock F: number of columns\n"
     "   -rows integer: Codablock F: number of rows\n"
-    "   -vers integer: Symbology option, QR-Code, Plessy\n"
+    "   -vers integer: Symbology option\n"
     "   -dmre bool: Allow Data Matrix Rectangular Extended\n"
+    "   -separator 0..4 (default: 1) : Stacked symbologies: separator width\n"
     "   -rotate angle: Image rotation by 0,90 or 270 degrees\n"
     "   -secure integer: EC Level (PDF417, QR)\n"
     "   -mode: Structured primary data mode (Maxicode, Composite)\n"
@@ -407,8 +442,8 @@ static char help_message[] = "zint tcl(stub,obj) dll\n"
     "   -dotsize number: radius ratio of dots from 0.01 to 1.0\n" 
     "   -scale double: Scale the image to this factor\n"
     "   -format binary|unicode|gs1: input data format. Default:unicode\n"
-	"   -fullmultibyte: allow multibyte compaction for xQR, HanXin, Gridmatrix\n"
-	"   -gssep bool: for gs1, use gs as separator instead fnc1 (Datamatrix only)\n"
+    "   -fullmultibyte: allow multibyte compaction for xQR, HanXin, Gridmatrix\n"
+    "   -gssep bool: for gs1, use gs as separator instead fnc1 (Datamatrix only)\n"
     "   -eci number: ECI to use\n"
     "   -notext bool: no interpretation line\n"
     "   -square bool: force Data Matrix symbols to be square\n"
@@ -467,8 +502,8 @@ EXPORT int Zint_Init (Tcl_Interp *interp)
 //------------------------------------------------------------------------------
 EXPORT int Zint_Unload (Tcl_Interp *Interp, int Flags)
 {
-	// Allow unload
-	return TCL_OK;
+    // Allow unload
+    return TCL_OK;
 }
 /*----------------------------------------------------------------------------*/
 /* >>>>> Called routine */
@@ -567,7 +602,9 @@ static int Encode(Tcl_Interp *interp, int objc,
     int destWidth = 0;
     int destHeight = 0;
     int ECIIndex = 0;
-	int fFullMultiByte = 0;
+    int fFullMultiByte = 0;
+    int addon_gap = 0;
+    int Separator = 1;
     /*------------------------------------------------------------------------*/
     /* >> Check if at least data and object is given and a pair number of */
     /* >> options */
@@ -593,17 +630,18 @@ static int Encode(Tcl_Interp *interp, int objc,
         /*--------------------------------------------------------------------*/
         /* Option list and indexes */
         char *optionList[] = {
-            "-barcode", "-bg", "-bind", "-bold", "-border", "-box", "-cols",
-            "-dmre", "-dotsize", "-dotty", "-eci", "-fg", "-format", "-gssep",
-			"-height", "-init", "-mode", "-notext", "-primary", "-rotate",
-			"-rows", "-scale", "-secure", "-smalltext", "-square", "-to",
-			"-vers", "-whitesp", "-fullmultibyte", NULL};
+            "-addongap", "-barcode", "-bg", "-bind", "-bold", "-border", "-box",
+            "-cols", "-dmre", "-dotsize", "-dotty", "-eci", "-fg", "-format",
+            "-gssep", "-height", "-init", "-mode", "-nobackground", "-notext",
+            "-primary", "-rotate", "-rows", "-scale", "-secure", "-smalltext",
+            "-square", "-to", "-vers", "-whitesp", "-fullmultibyte",
+            "-separator", NULL};
         enum iOption {
-            iBarcode, iBG, iBind, iBold, iBorder, iBox, iCols,
+            iAddonGap, iBarcode, iBG, iBind, iBold, iBorder, iBox, iCols,
             iDMRE, iDotSize, iDotty, iECI, iFG, iFormat, iGSSep, iHeight,
-            iInit, iMode, iNoText, iPrimary, iRotate, iRows,
+            iInit, iMode, iNoBackground, iNoText, iPrimary, iRotate, iRows,
             iScale, iSecure, iSmallText, iSquare, iTo, iVers,
-            iWhiteSp, iFullMultiByte
+            iWhiteSp, iFullMultiByte, iSeparator
             };
         int optionIndex;
         int intValue;
@@ -625,12 +663,13 @@ static int Encode(Tcl_Interp *interp, int objc,
         case iBox:
         case iDMRE:
         case iDotty:
-		case iGSSep:
+        case iGSSep:
         case iInit:
+        case iNoBackground:
         case iNoText:
         case iSmallText:
         case iSquare:
-		case iFullMultiByte:
+        case iFullMultiByte:
             /* >> Binary options */
             if (TCL_OK != Tcl_GetBooleanFromObj(interp, objv[optionPos+1],
                     &intValue))
@@ -642,9 +681,9 @@ static int Encode(Tcl_Interp *interp, int objc,
         case iBG:
             /* >> Colors */
             pStr = Tcl_GetStringFromObj(objv[optionPos+1],&lStr);
-            if (lStr != 6) {
+            if (lStr != 6 && lStr != 8) {
                 Tcl_SetObjResult(interp,
-                    Tcl_NewStringObj("Color is not 6 hex",-1));
+                    Tcl_NewStringObj("Color is not 6 or 8 hex",-1));
                 fError = 1;
             }
             break;
@@ -657,6 +696,7 @@ static int Encode(Tcl_Interp *interp, int objc,
                 fError = 1;
             }
             break;
+        case iAddonGap:
         case iBorder:
         case iCols:
         case iHeight:
@@ -666,6 +706,7 @@ static int Encode(Tcl_Interp *interp, int objc,
         case iSecure:
         case iVers:
         case iWhiteSp:
+        case iSeparator:
             /* >> Int */
             if (TCL_OK != Tcl_GetIntFromObj(interp, objv[optionPos+1],
                     &intValue))
@@ -691,6 +732,15 @@ static int Encode(Tcl_Interp *interp, int objc,
         }
         /*--------------------------------------------------------------------*/
         switch (optionIndex) {
+        case iAddonGap:
+            if (intValue < 7 || intValue > 12) {
+                Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("Invalid add-on gap value not within 7 to 12", -1));
+                fError = 1;
+            } else {
+                addon_gap = intValue;
+            }
+            break;
         case iBind:
             if (intValue) {
                 hSymbol->output_options |= BARCODE_BIND;
@@ -735,8 +785,8 @@ static int Encode(Tcl_Interp *interp, int objc,
                 hSymbol->output_options &= ~GS1_GS_SEPARATOR;
             }
             break;
-		case iFullMultiByte:
-			fFullMultiByte = intValue;
+        case iFullMultiByte:
+            fFullMultiByte = intValue;
             break;
         case iECI:
             if(Tcl_GetIndexFromObj(interp, objv[optionPos+1],
@@ -763,12 +813,17 @@ static int Encode(Tcl_Interp *interp, int objc,
             }
             break;
         case iFG:
-            strncpy(hSymbol->fgcolour, pStr, 6);
-            hSymbol->fgcolour[6]='\0';
+            strncpy(hSymbol->fgcolour, pStr, lStr);
+            hSymbol->fgcolour[lStr]='\0';
             break;
         case iBG:
-            strncpy(hSymbol->bgcolour, pStr, 6);
-            hSymbol->bgcolour[6]='\0';
+            strncpy(hSymbol->bgcolour, pStr, lStr);
+            hSymbol->bgcolour[lStr]='\0';
+            break;
+        case iNoBackground:
+            if (intValue) {
+                strcpy(hSymbol->bgcolour, "ffffff00");
+            }
             break;
         case iNoText:
             hSymbol->show_hrt = (intValue?0:1);
@@ -810,11 +865,20 @@ static int Encode(Tcl_Interp *interp, int objc,
                 hSymbol->height = intValue;
             }
             break;
+        case iSeparator:
+            if (intValue < 0 || intValue > 4) {
+                Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("Separator out of range", -1));
+                fError = 1;
+            } else {
+                Separator = intValue;
+            }
+            break;
         case iCols:
         case iVers:
             /* >> Int in Option 2 */
             if (intValue < 1
-                || (optionIndex==iCols && intValue > 66)
+                || (optionIndex==iCols && intValue > 67)
                 || (optionIndex==iVers && intValue > 47))
             {
                 Tcl_SetObjResult(interp,
@@ -938,22 +1002,19 @@ static int Encode(Tcl_Interp *interp, int objc,
         }
     }
     /*------------------------------------------------------------------------*/
-	/* >>> Set fullmultibyte option if symbology matches*/
-	/* On wrong symbology, option is ignored (as does the zint program)*/
-	if (fFullMultiByte) {
-		switch (hSymbol->symbology) {
-			case BARCODE_QRCODE:
-			case BARCODE_MICROQR:
-			/*case BARCODE_HIBC_QR: Note character set restricted to ASCII subset*/
-			/*case BARCODE_UPNQR: Note does not use Kanji mode*/
-			case BARCODE_RMQR:
-			case BARCODE_HANXIN:
-			case BARCODE_GRIDMATRIX:
-				hSymbol->option_3 = ZINT_FULL_MULTIBYTE;
-				break;
-		}
-
-	}
+    /* >>> option_3 is set by two values depending on the symbology */
+    /* On wrong symbology, the option is ignored(as does the zint program)*/
+    if (fFullMultiByte && is_fullmultibyte(hSymbol)) {
+        hSymbol->option_3 = ZINT_FULL_MULTIBYTE;
+    } else if (Separator && is_stackable(hSymbol->symbology)) {
+        hSymbol->option_3 = Separator;
+    }
+    /*------------------------------------------------------------------------*/
+    /* >>> option_2 is set by two values depending on the symbology */
+    /* On wrong symbology, the option is ignored(as does the zint program)*/
+    if (addon_gap && is_extendable(hSymbol->symbology)) {
+        hSymbol->option_2 = addon_gap;
+    }
     /*------------------------------------------------------------------------*/
     /* >>> Prepare input dstring and encode it to ECI encoding*/
     Tcl_DStringInit(& dsInput);
@@ -991,7 +1052,7 @@ static int Encode(Tcl_Interp *interp, int objc,
         int ErrorNumber;
         Tk_PhotoHandle hPhoto;
         /*--------------------------------------------------------------------*/
-		/* call zint graphic creation to buffer */
+        /* call zint graphic creation to buffer */
         ErrorNumber = ZBarcode_Encode_and_Buffer(hSymbol,
             (unsigned char *) pStr, lStr, rotate_angle);
         /*--------------------------------------------------------------------*/
@@ -1012,15 +1073,37 @@ static int Encode(Tcl_Interp *interp, int objc,
             fError = 1;
         } else {
             Tk_PhotoImageBlock sImageBlock;
-            sImageBlock.pixelPtr = (unsigned char *) hSymbol->bitmap;
-            sImageBlock.width = hSymbol->bitmap_width;
-            sImageBlock.height = hSymbol->bitmap_height;
-            sImageBlock.pitch = 3*hSymbol->bitmap_width;
-            sImageBlock.pixelSize = 3;
-            sImageBlock.offset[0] = 0;
-            sImageBlock.offset[1] = 1;
-            sImageBlock.offset[2] = 2;
-            sImageBlock.offset[3] = 0;
+            char * pImageRGBA = NULL;
+            if (hSymbol->alphamap == NULL) {
+                sImageBlock.pixelPtr = (unsigned char *) hSymbol->bitmap;
+                sImageBlock.width = hSymbol->bitmap_width;
+                sImageBlock.height = hSymbol->bitmap_height;
+                sImageBlock.pitch = 3*hSymbol->bitmap_width;
+                sImageBlock.pixelSize = 3;
+                sImageBlock.offset[0] = 0;
+                sImageBlock.offset[1] = 1;
+                sImageBlock.offset[2] = 2;
+                sImageBlock.offset[3] = 0;
+            } else {
+                int index;
+                /* Alpha channel present - prepare the image data in rgba order */
+                pImageRGBA = ckalloc(hSymbol->bitmap_width*hSymbol->bitmap_height*4);
+                for (index = 0; index < hSymbol->bitmap_width*hSymbol->bitmap_height; index++) {
+                    pImageRGBA[index*4] = hSymbol->bitmap[index*3];
+                    pImageRGBA[index*4+1] = hSymbol->bitmap[index*3+1];
+                    pImageRGBA[index*4+2] = hSymbol->bitmap[index*3+2];
+                    pImageRGBA[index*4+3] = hSymbol->alphamap[index];
+                }
+                sImageBlock.pixelPtr = (unsigned char *) pImageRGBA;
+                sImageBlock.width = hSymbol->bitmap_width;
+                sImageBlock.height = hSymbol->bitmap_height;
+                sImageBlock.pitch = 4*hSymbol->bitmap_width;
+                sImageBlock.pixelSize = 4;
+                sImageBlock.offset[0] = 0;
+                sImageBlock.offset[1] = 1;
+                sImageBlock.offset[2] = 2;
+                sImageBlock.offset[3] = 3;
+            }
             if (0 == destWidth) {
                 destWidth = hSymbol->bitmap_width;
             }
@@ -1032,6 +1115,9 @@ static int Encode(Tcl_Interp *interp, int objc,
                 TK_PHOTO_COMPOSITE_OVERLAY))
             {
                 fError = 1;
+            }
+            if (pImageRGBA != NULL) {
+                ckfree(pImageRGBA);
             }
         }
     }
@@ -1046,4 +1132,63 @@ static int Encode(Tcl_Interp *interp, int objc,
     return TCL_OK;
 }
 
+static int is_fullmultibyte(struct zint_symbol* symbol) {
+    switch (symbol->symbology) {
+        case BARCODE_QRCODE:
+        case BARCODE_MICROQR:
+        //case BARCODE_HIBC_QR: Note character set restricted to ASCII subset
+        //case BARCODE_UPNQR: Note does not use Kanji mode
+        case BARCODE_RMQR:
+        case BARCODE_HANXIN:
+        case BARCODE_GRIDMATRIX:
+            return 1;
+    }
+    return 0;
+}
+
+/* Indicates which symbologies can have row binding
+ * Note: if change this must also change version in backend/common.c */
+static int is_stackable(const int symbology) {
+    if (symbology < BARCODE_PDF417) {
+        return 1;
+    }
+
+    switch (symbology) {
+        case BARCODE_CODE128B:
+        case BARCODE_ISBNX:
+        case BARCODE_EAN14:
+        case BARCODE_NVE18:
+        case BARCODE_KOREAPOST:
+        case BARCODE_PLESSEY:
+        case BARCODE_TELEPEN_NUM:
+        case BARCODE_ITF14:
+        case BARCODE_CODE32:
+        case BARCODE_CODABLOCKF:
+        case BARCODE_HIBC_BLOCKF:
+            return 1;
+    }
+
+    return 0;
+}
+
+/* Indicates which symbols can have addon (EAN-2 and EAN-5)
+ * Note: if change this must also change version in backend/common.c */
+static int is_extendable(const int symbology) {
+
+    switch (symbology) {
+        case BARCODE_EANX:
+        case BARCODE_EANX_CHK:
+        case BARCODE_UPCA:
+        case BARCODE_UPCA_CHK:
+        case BARCODE_UPCE:
+        case BARCODE_UPCE_CHK:
+        case BARCODE_ISBNX:
+        case BARCODE_EANX_CC:
+        case BARCODE_UPCA_CC:
+        case BARCODE_UPCE_CC:
+            return 1;
+    }
+
+    return 0;
+}
 
