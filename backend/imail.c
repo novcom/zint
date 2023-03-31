@@ -1,8 +1,7 @@
 /* imail.c - Handles Intelligent Mail (aka OneCode) for USPS */
-
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008 - 2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008-2022 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,7 +28,7 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
-/* vim: set ts=4 sw=4 et : */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
 /*  The function "USPS_MSB_Math_CRC11GenerateFrameCheckSequence"
     is Copyright (C) 2006 United States Postal Service */
@@ -38,7 +37,7 @@
 #include "common.h"
 #include "large.h"
 
-#define SODIUM  "0123456789-"
+#define SODIUM_MNS_F (IS_NUM_F | IS_MNS_F) /* SODIUM "0123456789-" */
 
 /* The following lookup tables were generated using the code in Appendix C */
 
@@ -187,7 +186,7 @@ static const unsigned short AppxD_II[78] = {
     0x0801, 0x1002, 0x1001, 0x0802, 0x0404, 0x0208, 0x0110, 0x00A0
 };
 
-static const unsigned short int AppxD_IV[130] = {
+static const unsigned short AppxD_IV[130] = {
     /* Appendix D Table IV - Bar-to-Character Mapping (reverse lookup) */
     67, 6, 78, 16, 86, 95, 34, 40, 45, 113, 117, 121, 62, 87, 18, 104, 41, 76, 57, 119, 115, 72, 97,
     2, 127, 26, 105, 35, 122, 52, 114, 7, 24, 82, 68, 63, 94, 44, 77, 112, 70, 100, 39, 30, 107,
@@ -242,28 +241,29 @@ static unsigned short USPS_MSB_Math_CRC11GenerateFrameCheckSequence(unsigned cha
     return FrameCheckSequence;
 }
 
-INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int length) {
+INTERNAL int daft_set_height(struct zint_symbol *symbol, const float min_height, const float max_height);
+
+INTERNAL int usps_imail(struct zint_symbol *symbol, unsigned char source[], int length) {
     char data_pattern[200];
-    int error_number;
+    int error_number = 0;
     int i, j, read;
     char zip[35], tracker[35], temp[2];
     large_int accum;
     large_int byte_array_reg;
     unsigned char byte_array[13];
     unsigned short usps_crc;
-    int codeword[10];
+    unsigned int codeword[10];
     unsigned short characters[10];
-    short int bar_map[130];
+    short bar_map[130];
     int zip_len, len;
 
     if (length > 32) {
-        strcpy(symbol->errtxt, "450: Input too long");
+        strcpy(symbol->errtxt, "450: Input too long (32 character maximum)");
         return ZINT_ERROR_TOO_LONG;
     }
-    error_number = is_sane(SODIUM, source, length);
-    if (error_number == ZINT_ERROR_INVALID_DATA) {
-        strcpy(symbol->errtxt, "451: Invalid characters in data");
-        return error_number;
+    if (!is_sane(SODIUM_MNS_F, source, length)) {
+        strcpy(symbol->errtxt, "451: Invalid character in data (digits and \"-\" only)");
+        return ZINT_ERROR_INVALID_DATA;
     }
 
     strcpy(zip, "");
@@ -297,17 +297,17 @@ INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int lengt
     }
 
     if (strlen(tracker) != 20) {
-        strcpy(symbol->errtxt, "452: Invalid length tracking code");
+        strcpy(symbol->errtxt, "452: Invalid length for tracking code (20 characters required)");
         return ZINT_ERROR_INVALID_DATA;
     }
     if (tracker[1] > '4') {
-        strcpy(symbol->errtxt, "454: Invalid Barcode Identifier");
+        strcpy(symbol->errtxt, "454: Barcode Identifier (second character) out of range (0 to 4)");
         return ZINT_ERROR_INVALID_DATA;
     }
 
-    zip_len = strlen(zip);
+    zip_len = (int) strlen(zip);
     if (zip_len != 0 && zip_len != 5 && zip_len != 9 && zip_len != 11) {
-        strcpy(symbol->errtxt, "453: Invalid ZIP code");
+        strcpy(symbol->errtxt, "453: Invalid length for ZIP code (5, 9 or 11 characters required)");
         return ZINT_ERROR_INVALID_DATA;
     }
 
@@ -342,7 +342,7 @@ INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int lengt
 
     /* and then the rest */
 
-    for (read = 2, len = strlen(tracker); read < len; read++) {
+    for (read = 2, len = (int) strlen(tracker); read < len; read++) {
 
         large_mul_u64(&accum, 10);
         large_add_u64(&accum, ctoi(tracker[read]));
@@ -362,15 +362,15 @@ INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int lengt
     /* *** Step 3 - Conversion from Binary Data to Codewords *** */
 
     /* start with codeword J which is base 636 */
-    codeword[9] = large_div_u64(&accum, 636);
+    codeword[9] = (unsigned int) large_div_u64(&accum, 636);
 
     /* then codewords I to B with base 1365 */
 
     for (j = 8; j > 0; j--) {
-        codeword[j] = large_div_u64(&accum, 1365);
+        codeword[j] = (unsigned int) large_div_u64(&accum, 1365);
     }
 
-    codeword[0] = large_lo(&accum);
+    codeword[0] = (unsigned int) large_lo(&accum);
 
     /* *** Step 4 - Inserting Additional Information into Codewords *** */
 
@@ -421,7 +421,7 @@ INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int lengt
 
     /* Translate 4-state data pattern to symbol */
     read = 0;
-    for (i = 0, len = strlen(data_pattern); i < len; i++) {
+    for (i = 0, len = (int) strlen(data_pattern); i < len; i++) {
         if ((data_pattern[i] == '1') || (data_pattern[i] == '0')) {
             set_module(symbol, 0, read);
         }
@@ -432,11 +432,25 @@ INTERNAL int imail(struct zint_symbol *symbol, unsigned char source[], int lengt
         read += 2;
     }
 
-    symbol->row_height[0] = 3;
-    symbol->row_height[1] = 2;
-    symbol->row_height[2] = 3;
-
+    if (symbol->output_options & COMPLIANT_HEIGHT) {
+        /* USPS-B-3200 Section 2.3.1
+           Using bar pitch as X (1" / 43) ~ 0.023" based on 22 bars + 21 spaces per inch (bar width 0.015" - 0.025"),
+           height 0.125" - 0.165"
+           Tracker 0.048" (average of 0.039" - 0.057")
+           Ascender/descender 0.0965" (average of 0.082" - 0.111") less T = 0.0485"
+         */
+        symbol->row_height[0] = stripf(0.0485f * 43); /* 2.0855 */
+        symbol->row_height[1] = stripf(0.048f * 43); /* 2.064 */
+        /* Note using max X for minimum and min X for maximum */
+        error_number = daft_set_height(symbol, stripf(0.125f * 39) /*4.875*/, stripf(0.165f * 47) /*7.755*/);
+    } else {
+        symbol->row_height[0] = 3.0f;
+        symbol->row_height[1] = 2.0f;
+        (void) daft_set_height(symbol, 0.0f, 0.0f);
+    }
     symbol->rows = 3;
     symbol->width = read - 1;
     return error_number;
 }
+
+/* vim: set ts=4 sw=4 et : */

@@ -2,7 +2,7 @@
 
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008 - 2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2008-2022 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,15 +29,10 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
 */
-/* vim: set ts=4 sw=4 et : */
-#ifndef __LARGE_H
-#define __LARGE_H
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#ifndef _MSC_VER
-#include <stdint.h>
-#else
-#include "ms_stdint.h"
-#endif
+#ifndef Z_LARGE_H
+#define Z_LARGE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,32 +44,33 @@ typedef struct { uint64_t lo; uint64_t hi; } large_int;
 #define large_hi(s) ((s)->hi)
 
 /* Set 128-bit `t` from 128-bit `s` */
-#define large_load(t, s) do { (t)->lo = (s)->lo; (t)->hi = (s)->hi; } while (0)
+#define large_load(t, s) do { *(t) = *(s); } while (0)
 
 /* Set 128-bit `t` from 64-bit `s` */
 #define large_load_u64(t, s) do { (t)->lo = (s); (t)->hi = 0; } while (0)
 
-INTERNAL void large_load_str_u64(large_int *t, const unsigned char *s, int length);
+INTERNAL void large_load_str_u64(large_int *t, const unsigned char *s, const int length);
 
 INTERNAL void large_add(large_int *t, const large_int *s);
-INTERNAL void large_add_u64(large_int *t, uint64_t s);
+INTERNAL void large_add_u64(large_int *t, const uint64_t s);
 
-INTERNAL void large_sub_u64(large_int *t, uint64_t s);
+INTERNAL void large_sub_u64(large_int *t, const uint64_t s);
 
-INTERNAL void large_mul_u64(large_int *t, uint64_t s);
+INTERNAL void large_mul_u64(large_int *t, const uint64_t s);
 
 INTERNAL uint64_t large_div_u64(large_int *t, uint64_t v);
 
-INTERNAL void large_unset_bit(large_int *t, int bit);
+INTERNAL void large_unset_bit(large_int *t, const int bit);
 
-INTERNAL void large_uint_array(const large_int *t, unsigned int *uint_array, int size, int bits);
-INTERNAL void large_uchar_array(const large_int *t, unsigned char *uchar_array, int size, int bits);
+INTERNAL void large_uint_array(const large_int *t, unsigned int *uint_array, const int size, int bits);
+INTERNAL void large_uchar_array(const large_int *t, unsigned char *uchar_array, const int size, int bits);
 
-INTERNAL void large_print(large_int *t);
-INTERNAL char *large_dump(large_int *t, char *buf);
+INTERNAL char *large_dump(const large_int *t, char *buf);
+INTERNAL void large_print(const large_int *t);
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif /* __LARGE_H */
+/* vim: set ts=4 sw=4 et : */
+#endif /* Z_LARGE_H */

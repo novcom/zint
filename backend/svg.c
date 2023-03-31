@@ -1,8 +1,7 @@
 /* svg.c - Scalable Vector Graphics */
-
 /*
     libzint - the open source barcode library
-    Copyright (C) 2009 - 2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2009-2023 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -29,57 +28,56 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
-/* vim: set ts=4 sw=4 et : */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
+#include <errno.h>
 #include <locale.h>
-#include <string.h>
-#include <stdio.h>
 #include <math.h>
-#ifdef _MSC_VER
-#include <malloc.h>
-#endif
+#include <stdio.h>
 
 #include "common.h"
+#include "output.h"
 
-void pick_colour(int colour, char colour_code[]) {
-    switch(colour) {
-        case 0: // White
-            strcpy(colour_code, "ffffff");
-            break;
-        case 1: // Cyan
+static void pick_colour(int colour, char colour_code[]) {
+    switch (colour) {
+        case 1: /* Cyan */
             strcpy(colour_code, "00ffff");
             break;
-        case 2: // Blue
+        case 2: /* Blue */
             strcpy(colour_code, "0000ff");
             break;
-        case 3: // Magenta
+        case 3: /* Magenta */
             strcpy(colour_code, "ff00ff");
             break;
-        case 4: // Red
+        case 4: /* Red */
             strcpy(colour_code, "ff0000");
             break;
-        case 5: // Yellow
+        case 5: /* Yellow */
             strcpy(colour_code, "ffff00");
             break;
-        case 6: // Green
+        case 6: /* Green */
             strcpy(colour_code, "00ff00");
             break;
-        default: // Black
+        case 8: /* White */
+            strcpy(colour_code, "ffffff");
+            break;
+        default: /* Black */
             strcpy(colour_code, "000000");
             break;
     }
 }
 
-static void make_html_friendly(unsigned char * string, char * html_version) {
+static void make_html_friendly(unsigned char *string, char *html_version) {
     /* Converts text to use HTML entity codes */
 
-    int i, html_pos;
+    int i, len, html_pos;
 
     html_pos = 0;
     html_version[html_pos] = '\0';
+    len = (int) ustrlen(string);
 
-    for (i = 0; i < (int) ustrlen(string); i++) {
-        switch(string[i]) {
+    for (i = 0; i < len; i++) {
+        switch (string[i]) {
             case '>':
                 strcat(html_version, "&gt;");
                 html_pos += 4;
@@ -115,16 +113,20 @@ static void make_html_friendly(unsigned char * string, char * html_version) {
 }
 
 INTERNAL int svg_plot(struct zint_symbol *symbol) {
+    static const char font_family[] = "Helvetica, sans-serif";
     FILE *fsvg;
     int error_number = 0;
     const char *locale = NULL;
     float ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy;
-    float radius;
+    float previous_diameter;
+    float radius, half_radius, half_sqrt3_radius;
     int i;
     char fgcolour_string[7];
     char bgcolour_string[7];
-    int bg_alpha = 0xff;
-    int fg_alpha = 0xff;
+    unsigned char fgred, fggreen, fgblue, fg_alpha;
+    unsigned char bgred, bggreen, bgblue, bg_alpha;
+    float fg_alpha_opacity = 0.0f, bg_alpha_opacity = 0.0f; /* Suppress `-Wmaybe-uninitialized` */
+    int bold;
 
     struct zint_vector_rect *rect;
     struct zint_vector_hexagon *hex;
@@ -132,30 +134,27 @@ INTERNAL int svg_plot(struct zint_symbol *symbol) {
     struct zint_vector_string *string;
 
     char colour_code[7];
-    int html_len;
+    int len, html_len;
 
-#ifdef _MSC_VER
-    char* html_string;
-#endif
+    const int output_to_stdout = symbol->output_options & BARCODE_STDOUT;
+    char *html_string;
 
-    for (i = 0; i < 6; i++) {
-        fgcolour_string[i] = symbol->fgcolour[i];
-        bgcolour_string[i] = symbol->bgcolour[i];
+    (void) out_colour_get_rgb(symbol->fgcolour, &fgred, &fggreen, &fgblue, &fg_alpha);
+    if (fg_alpha != 0xff) {
+        fg_alpha_opacity = fg_alpha / 255.0f;
     }
-    fgcolour_string[6] = '\0';
-    bgcolour_string[6] = '\0';
-    
-    if (strlen(symbol->fgcolour) > 6) {
-        fg_alpha = (16 * ctoi(symbol->fgcolour[6])) + ctoi(symbol->fgcolour[7]);
+    sprintf(fgcolour_string, "%02X%02X%02X", fgred, fggreen, fgblue);
+    (void) out_colour_get_rgb(symbol->bgcolour, &bgred, &bggreen, &bgblue, &bg_alpha);
+    if (bg_alpha != 0xff) {
+        bg_alpha_opacity = bg_alpha / 255.0f;
     }
-    if (strlen(symbol->bgcolour) > 6) {
-        bg_alpha = (16 * ctoi(symbol->bgcolour[6])) + ctoi(symbol->bgcolour[7]);
-    }
-    
-    html_len = strlen((char *)symbol->text) + 1;
+    sprintf(bgcolour_string, "%02X%02X%02X", bgred, bggreen, bgblue);
 
-    for (i = 0; i < (int) strlen((char *)symbol->text); i++) {
-        switch(symbol->text[i]) {
+    len = (int) ustrlen(symbol->text);
+    html_len = len + 1;
+
+    for (i = 0; i < len; i++) {
+        switch (symbol->text[i]) {
             case '>':
             case '<':
             case '"':
@@ -166,128 +165,186 @@ INTERNAL int svg_plot(struct zint_symbol *symbol) {
         }
     }
 
-#ifndef _MSC_VER
-    char html_string[html_len];
-#else
-    html_string = (char*) _alloca(html_len);
-#endif
+    html_string = (char *) z_alloca(html_len);
 
     /* Check for no created vector set */
     /* E-Mail Christian Schmitz 2019-09-10: reason unknown  Ticket #164*/
     if (symbol->vector == NULL) {
+        strcpy(symbol->errtxt, "681: Vector header NULL");
         return ZINT_ERROR_INVALID_DATA;
     }
-    if (symbol->output_options & BARCODE_STDOUT) {
+    if (output_to_stdout) {
         fsvg = stdout;
     } else {
-        fsvg = fopen(symbol->outfile, "w");
-    }
-    if (fsvg == NULL) {
-        strcpy(symbol->errtxt, "660: Could not open output file");
-        return ZINT_ERROR_FILE_ACCESS;
+        if (!(fsvg = out_fopen(symbol->outfile, "w"))) {
+            sprintf(symbol->errtxt, "680: Could not open output file (%d: %.30s)", errno, strerror(errno));
+            return ZINT_ERROR_FILE_ACCESS;
+        }
     }
 
     locale = setlocale(LC_ALL, "C");
 
     /* Start writing the header */
-    fprintf(fsvg, "<?xml version=\"1.0\" standalone=\"no\"?>\n");
-    fprintf(fsvg, "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\"\n");
-    fprintf(fsvg, "   \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n");
-    fprintf(fsvg, "<svg width=\"%d\" height=\"%d\" version=\"1.1\"\n", (int) ceil(symbol->vector->width), (int) ceil(symbol->vector->height));
-    fprintf(fsvg, "   xmlns=\"http://www.w3.org/2000/svg\">\n");
-    fprintf(fsvg, "   <desc>Zint Generated Symbol\n");
-    fprintf(fsvg, "   </desc>\n");
+    fputs("<?xml version=\"1.0\" standalone=\"no\"?>\n"
+          "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\"\n"
+          "   \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n", fsvg);
+    fprintf(fsvg, "<svg width=\"%d\" height=\"%d\" version=\"1.1\"\n",
+            (int) ceilf(symbol->vector->width), (int) ceilf(symbol->vector->height));
+    fputs("   xmlns=\"http://www.w3.org/2000/svg\">\n"
+          "   <desc>Zint Generated Symbol\n"
+          "   </desc>\n", fsvg);
     fprintf(fsvg, "\n   <g id=\"barcode\" fill=\"#%s\">\n", fgcolour_string);
 
     if (bg_alpha != 0) {
-        fprintf(fsvg, "      <rect x=\"0\" y=\"0\" width=\"%d\" height=\"%d\" fill=\"#%s\"", (int) ceil(symbol->vector->width), (int) ceil(symbol->vector->height), bgcolour_string);
+        fprintf(fsvg, "      <rect x=\"0\" y=\"0\" width=\"%d\" height=\"%d\" fill=\"#%s\"",
+                (int) ceilf(symbol->vector->width), (int) ceilf(symbol->vector->height), bgcolour_string);
         if (bg_alpha != 0xff) {
-            fprintf(fsvg, " opacity=\"%.3f\"", (float) bg_alpha / 255.0);
+            fprintf(fsvg, " opacity=\"%.3f\"", bg_alpha_opacity);
         }
-        fprintf(fsvg, " />\n");
+        fputs(" />\n", fsvg);
     }
 
     rect = symbol->vector->rectangles;
     while (rect) {
-        fprintf(fsvg, "      <rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\"", rect->x, rect->y, rect->width, rect->height);
+        fprintf(fsvg, "      <rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\"",
+                rect->x, rect->y, rect->width, rect->height);
         if (rect->colour != -1) {
             pick_colour(rect->colour, colour_code);
             fprintf(fsvg, " fill=\"#%s\"", colour_code);
         }
         if (fg_alpha != 0xff) {
-            fprintf(fsvg, " opacity=\"%.3f\"", (float) fg_alpha / 255.0);
+            fprintf(fsvg, " opacity=\"%.3f\"", fg_alpha_opacity);
         }
-        fprintf(fsvg, " />\n");
+        fputs(" />\n", fsvg);
         rect = rect->next;
     }
 
+    previous_diameter = radius = half_radius = half_sqrt3_radius = 0.0f;
     hex = symbol->vector->hexagons;
     while (hex) {
-        radius = hex->diameter / 2.0;
-        ay = hex->y + (1.0 * radius);
-        by = hex->y + (0.5 * radius);
-        cy = hex->y - (0.5 * radius);
-        dy = hex->y - (1.0 * radius);
-        ey = hex->y - (0.5 * radius);
-        fy = hex->y + (0.5 * radius);
-        ax = hex->x;
-        bx = hex->x + (0.86 * radius);
-        cx = hex->x + (0.86 * radius);
-        dx = hex->x;
-        ex = hex->x - (0.86 * radius);
-        fx = hex->x - (0.86 * radius);
-        fprintf(fsvg, "      <path d=\"M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z\"", ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy);
-        if (fg_alpha != 0xff) {
-            fprintf(fsvg, " opacity=\"%.3f\"", (float) fg_alpha / 255.0);
+        if (previous_diameter != hex->diameter) {
+            previous_diameter = hex->diameter;
+            radius = (float) (0.5 * previous_diameter);
+            half_radius = (float) (0.25 * previous_diameter);
+            half_sqrt3_radius = (float) (0.43301270189221932338 * previous_diameter);
         }
-        fprintf(fsvg, " />\n");
+        if ((hex->rotation == 0) || (hex->rotation == 180)) {
+            ay = hex->y + radius;
+            by = hex->y + half_radius;
+            cy = hex->y - half_radius;
+            dy = hex->y - radius;
+            ey = hex->y - half_radius;
+            fy = hex->y + half_radius;
+            ax = hex->x;
+            bx = hex->x + half_sqrt3_radius;
+            cx = hex->x + half_sqrt3_radius;
+            dx = hex->x;
+            ex = hex->x - half_sqrt3_radius;
+            fx = hex->x - half_sqrt3_radius;
+        } else {
+            ay = hex->y;
+            by = hex->y + half_sqrt3_radius;
+            cy = hex->y + half_sqrt3_radius;
+            dy = hex->y;
+            ey = hex->y - half_sqrt3_radius;
+            fy = hex->y - half_sqrt3_radius;
+            ax = hex->x - radius;
+            bx = hex->x - half_radius;
+            cx = hex->x + half_radius;
+            dx = hex->x + radius;
+            ex = hex->x + half_radius;
+            fx = hex->x - half_radius;
+        }
+        fprintf(fsvg, "      <path d=\"M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z\"",
+                ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy);
+        if (fg_alpha != 0xff) {
+            fprintf(fsvg, " opacity=\"%.3f\"", fg_alpha_opacity);
+        }
+        fputs(" />\n", fsvg);
         hex = hex->next;
     }
 
+    previous_diameter = radius = 0.0f;
     circle = symbol->vector->circles;
     while (circle) {
-        fprintf(fsvg, "      <circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.2f\"", circle->x, circle->y, circle->diameter / 2.0);
-        
-        if (circle->colour) {
-            fprintf(fsvg, " fill=\"#%s\"", bgcolour_string);
+        if (previous_diameter != circle->diameter) {
+            previous_diameter = circle->diameter;
+            radius = (float) (0.5 * previous_diameter);
+        }
+        fprintf(fsvg, "      <circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.*f\"",
+                circle->x, circle->y, circle->width ? 3 : 2, radius);
+
+        if (circle->colour) { /* Legacy - no longer used */
+            if (circle->width) {
+                fprintf(fsvg, " stroke=\"#%s\" stroke-width=\"%.3f\" fill=\"none\"", bgcolour_string, circle->width);
+            } else {
+                fprintf(fsvg, " fill=\"#%s\"", bgcolour_string);
+            }
             if (bg_alpha != 0xff) {
-                // This doesn't work how the user is likely to expect - more work needed!
-                fprintf(fsvg, " opacity=\"%.3f\"", (float) bg_alpha / 255.0);
+                /* This doesn't work how the user is likely to expect - more work needed! */
+                fprintf(fsvg, " opacity=\"%.3f\"", bg_alpha_opacity);
             }
         } else {
+            if (circle->width) {
+                fprintf(fsvg, " stroke=\"#%s\" stroke-width=\"%.3f\" fill=\"none\"", fgcolour_string, circle->width);
+            }
             if (fg_alpha != 0xff) {
-                fprintf(fsvg, " opacity=\"%.3f\"", (float) fg_alpha / 255.0);
+                fprintf(fsvg, " opacity=\"%.3f\"", fg_alpha_opacity);
             }
         }
-        fprintf(fsvg, " />\n");
+        fputs(" />\n", fsvg);
         circle = circle->next;
     }
 
+    bold = (symbol->output_options & BOLD_TEXT) && !is_extendable(symbol->symbology);
     string = symbol->vector->strings;
     while (string) {
-        fprintf(fsvg, "      <text x=\"%.2f\" y=\"%.2f\" text-anchor=\"middle\"\n", string->x, string->y);
-        fprintf(fsvg, "         font-family=\"Helvetica\" font-size=\"%.1f\"", string->fsize);
-        if (fg_alpha != 0xff) {
-            fprintf(fsvg, " opacity=\"%.3f\"", (float) fg_alpha / 255.0);
+        const char *const halign = string->halign == 2 ? "end" : string->halign == 1 ? "start" : "middle";
+        fprintf(fsvg, "      <text x=\"%.2f\" y=\"%.2f\" text-anchor=\"%s\"\n", string->x, string->y, halign);
+        fprintf(fsvg, "         font-family=\"%s\" font-size=\"%.1f\"", font_family, string->fsize);
+        if (bold) {
+            fputs(" font-weight=\"bold\"", fsvg);
         }
-        fprintf(fsvg, " >\n");
+        if (fg_alpha != 0xff) {
+            fprintf(fsvg, " opacity=\"%.3f\"", fg_alpha_opacity);
+        }
+        if (string->rotation != 0) {
+            fprintf(fsvg, " transform=\"rotate(%d,%.2f,%.2f)\"", string->rotation, string->x, string->y);
+        }
+        fputs(" >\n", fsvg);
         make_html_friendly(string->text, html_string);
         fprintf(fsvg, "         %s\n", html_string);
-        fprintf(fsvg, "      </text>\n");
+        fputs("      </text>\n", fsvg);
         string = string->next;
     }
 
-    fprintf(fsvg, "   </g>\n");
-    fprintf(fsvg, "</svg>\n");
-
-    if (symbol->output_options & BARCODE_STDOUT) {
-        fflush(fsvg);
-    } else {
-        fclose(fsvg);
-    }
+    fputs("   </g>\n"
+          "</svg>\n", fsvg);
 
     if (locale)
         setlocale(LC_ALL, locale);
 
+    if (ferror(fsvg)) {
+        sprintf(symbol->errtxt, "682: Incomplete write to output (%d: %.30s)", errno, strerror(errno));
+        if (!output_to_stdout) {
+            (void) fclose(fsvg);
+        }
+        return ZINT_ERROR_FILE_WRITE;
+    }
+
+    if (output_to_stdout) {
+        if (fflush(fsvg) != 0) {
+            sprintf(symbol->errtxt, "683: Incomplete flush to output (%d: %.30s)", errno, strerror(errno));
+            return ZINT_ERROR_FILE_WRITE;
+        }
+    } else {
+        if (fclose(fsvg) != 0) {
+            sprintf(symbol->errtxt, "684: Failure on closing output file (%d: %.30s)", errno, strerror(errno));
+            return ZINT_ERROR_FILE_WRITE;
+        }
+    }
+
     return error_number;
 }
+
+/* vim: set ts=4 sw=4 et : */

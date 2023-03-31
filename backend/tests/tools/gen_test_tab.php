@@ -2,29 +2,41 @@
 /* Generate lookup table from unicode.org mapping file (SHIFTJIS.TXT by default). */
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008-2019 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2019-2022 Robin Stuart <rstuart114@gmail.com>
 */
-/* To create backend/tests/test_sjis_tab.h (from backend/tests/build directory):
+/* To create backend/tests/test_sjis_tab.h (from the project root directory):
  *
- *   php ../tools/gen_test_tab.php
+ *   php backend/tests/tools/gen_test_tab.php
  *
  * To create backend/tests/test_gb2312_tab.h;
  *
- *   php ../tools/gen_test_tab.php -f GB2312.TXT -s gb2312_tab
+ *   php backend/tests/tools/gen_test_tab.php -f GB2312.TXT -s gb2312_tab
+ *
+ * To create backend/tests/test_gbk.h;
+ *
+ *   php backend/tests/tools/gen_test_tab.php -f CP936.TXT -s gbk_tab
  *
  * To create backend/tests/test_gb18030_tab.h (note that backend/tests/tools/data/GB18030.TXT
  * will have to be downloaded first from https://haible.de/bruno/charsets/conversion-tables/GB18030.html
- * using the version libiconv-1.11/GB18030.TXT):
+ * using the version jdk-1.4.2/GB18030.TXT):
  *
- *   php ../tools/gen_test_tab.php -f GB18030.TXT -s gb18030_tab
+ *   php backend/tests/tools/gen_test_tab.php -f GB18030.TXT -s gb18030_tab
+ *
+ * To create backend/tests/test_big5_tab.h;
+ *
+ *   php backend/tests/tools/gen_test_tab.php -f BIG5.TXT -s big5_tab
+ *
+ * To create backend/tests/test_ksx1001_tab.h;
+ *
+ *   php backend/tests/tools/gen_test_tab.php -f KSX1001.TXT -s ksx1001_tab
+ *
  */
-/* vim: set ts=4 sw=4 et : */
 
 $basename = basename(__FILE__);
 $dirname = dirname(__FILE__);
 
 $opts = getopt('d:f:o:s:');
-$data_dirname = isset($opts['d']) ? $opts['d'] : ($dirname . '/data'); // Where to load file from.
+$data_dirname = isset($opts['d']) ? $opts['d'] : ($dirname . '/../../tools/data'); // Where to load file from.
 $file_name = isset($opts['f']) ? $opts['f'] : 'SHIFTJIS.TXT'; // Name of file.
 $out_dirname = isset($opts['o']) ? $opts['o'] : ($dirname . '/..'); // Where to put output.
 $suffix_name = isset($opts['s']) ? $opts['s'] : 'sjis_tab'; // Suffix of table and output file.
@@ -46,7 +58,7 @@ $tab_lines = array();
 $sort = array();
 foreach ($lines as $line) {
     $line = trim($line);
-    if ($line === '' || strncmp($line, '0x', 2) !== 0) {
+    if ($line === '' || strncmp($line, '0x', 2) !== 0 || strpos($line, "*** NO MAPPING ***") !== false) {
         continue;
     }
     if (preg_match('/^0x([0-9A-F]{2,8})[ \t]+0x([0-9A-F]{5})/', $line)) { // Exclude U+10000..10FFFF to save space
@@ -75,12 +87,14 @@ $out[] = '';
 $out[] = 'static const unsigned int test_' . $suffix_name . '_ind[] = {';
 $first = 0;
 foreach ($sort as $ind => $unicode) {
-    $div = (int)($unicode / 0x1000);
+    $div = (int)($unicode / 0x400);
     while ($div >= $first) {
-        $out[] = ($ind * 2) . ',';
+        $out[] = '    ' . ($ind * 2) . ',';
         $first++;
     }
 }
 $out[] = '};';
 
 file_put_contents($out_dirname . '/test_' . $suffix_name . '.h', implode("\n", $out) . "\n");
+
+/* vim: set ts=4 sw=4 et : */

@@ -1,6 +1,6 @@
 /*
     libzint - the open source barcode library
-    Copyright (C) 2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2020-2023 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -27,10 +27,10 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
-/* vim: set ts=4 sw=4 et : */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#ifndef CODE128_H
-#define CODE128_H
+#ifndef Z_CODE128_H
+#define Z_CODE128_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,22 +38,29 @@ extern "C" {
 
 #define C128_MAX 160
 
-#define SHIFTA 90
-#define LATCHA 91
-#define SHIFTB 92
-#define LATCHB 93
-#define SHIFTC 94
-#define LATCHC 95
-#define AORB 96
-#define ABORC 97
-    
-#define KRSET "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#define C128_LATCHA 'A'
+#define C128_LATCHB 'B'
+#define C128_LATCHC 'C'
+#define C128_SHIFTA 'a'
+#define C128_SHIFTB 'b'
+#define C128_ABORC  '9'
+#define C128_AORB   'Z'
 
-INTERNAL int parunmodd(const unsigned char llyth);
-INTERNAL void dxsmooth(int list[2][C128_MAX], int *indexliste);
+INTERNAL int code128(struct zint_symbol *symbol, unsigned char source[], int length);
+
+INTERNAL int c128_parunmodd(const unsigned char llyth);
+INTERNAL void c128_dxsmooth(int list[2][C128_MAX], int *indexliste, const char *manual_set);
+INTERNAL void c128_set_a(const unsigned char source, int values[], int *bar_chars);
+INTERNAL int c128_set_b(const unsigned char source, int values[], int *bar_chars);
+INTERNAL void c128_set_c(const unsigned char source_a, const unsigned char source_b, int values[], int *bar_chars);
+INTERNAL void c128_put_in_set(int list[2][C128_MAX], const int indexliste, char set[C128_MAX],
+                const unsigned char *source);
+
+INTERNAL_DATA_EXTERN const char C128Table[107][6];
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif /* CODE128_H */
+/* vim: set ts=4 sw=4 et : */
+#endif /* Z_CODE128_H */

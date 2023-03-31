@@ -1,6 +1,6 @@
 /*
     libzint - the open source barcode library
-    Copyright (C) 2019 - 2020 Robin Stuart <rstuart114@gmail.com>
+    Copyright (C) 2019-2022 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
  */
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * Intelligent Mail barcode Encoder Test Case Reference Set (csv file)
  * Copyright (C) 2009 U.S. Postal Service
@@ -34,15 +35,21 @@
 
 #include "testcommon.h"
 
-//#define TEST_IMAIL_CSV_MAX 300
+#include <time.h>
 
-static void test_csv(int index, int debug) {
+#define TEST_PERF_TIME(arg)     (((arg) * 1000.0) / CLOCKS_PER_SEC)
 
-    testStart("");
+#define TEST_CSV_PERF_ITERATIONS    100
 
-    FILE *fd = fopen("../data/imail/usps/uspsIMbEncoderTestCases.csv", "r");
-    assert_nonnull(fd, "open ../data/imail/usps/uspsIMbEncoderTestCases.csv");
+#if 0
+#define TEST_IMAIL_CSV_MAX 300
+#endif
 
+static void test_csv(const testCtx *const p_ctx) {
+    int debug = p_ctx->debug;
+
+    char csvfile[1024];
+    FILE *fd;
     char buffer[1024];
     char id[10];
     char tracking_code[50];
@@ -53,107 +60,138 @@ static void test_csv(int index, int debug) {
     char actual_daft[70];
 
     int ret;
-    int i;
     int lc = 0;
-    while (fgets(buffer, sizeof(buffer), fd) != NULL) {
 
-        lc++;
+	int j;
+    clock_t start;
+    clock_t total = 0;
+	int test_performance = debug & ZINT_DEBUG_TEST_PERFORMANCE; /* -d 256 */
+    int perf_iterations = test_performance ? TEST_CSV_PERF_ITERATIONS : 1;
 
-        if (index != -1 && lc != index + 1) continue;
+    testStart("test_csv");
 
-        #ifdef TEST_IMAIL_CSV_MAX
-        if (lc > TEST_IMAIL_CSV_MAX && index == -1) {
-            break;
-        }
-        #endif
-
-        id[0] = tracking_code[0] = routing_code[0] = expected_daft[0] = return_code[0] = '\0';
-
-        char *b = testUtilReadCSVField(buffer, id, sizeof(id));
-        assert_nonnull(b, "lc:%d id b == NULL", lc);
-        assert_equal(*b, ',', "lc:%d id *b %c != ','", lc, *b);
-
-        b = testUtilReadCSVField(++b, tracking_code, sizeof(tracking_code));
-        assert_nonnull(b, "lc:%d tracking_code b == NULL", lc);
-        assert_equal(*b, ',', "lc:%d tracking_code *b %c != ','", lc, *b);
-
-        b = testUtilReadCSVField(++b, routing_code, sizeof(routing_code));
-        assert_nonnull(b, "lc:%d routing_code b == NULL", lc);
-        assert_equal(*b, ',', "lc:%d routing_code *b %c != ','", lc, *b);
-
-        b = testUtilReadCSVField(++b, expected_daft, sizeof(expected_daft));
-        assert_nonnull(b, "lc:%d expected_daft b == NULL", lc);
-        assert_equal(*b, ',', "lc:%d expected_daft *b %c != ','", lc, *b);
-
-        b = testUtilReadCSVField(++b, return_code, sizeof(return_code));
-        assert_nonnull(b, "lc:%d return_code b == NULL", lc);
-        assert_equal(*b, ',', "lc:%d return_code *b %c != ','", lc, *b);
-
-        strcpy(data, tracking_code);
-        strcat(data, "-");
-        strcat(data, routing_code);
-
-        assert_nonzero(strlen(data), "lc:%d strlen(data) == 0", lc);
-
-        struct zint_symbol *symbol = ZBarcode_Create();
-        assert_nonnull(symbol, "Symbol not created\n");
-
-        symbol->symbology = BARCODE_USPS_IMAIL;
-        symbol->debug |= debug;
-
-        ret = ZBarcode_Encode(symbol, data, strlen(data));
-
-        if (strcmp(return_code, "00") == 0) {
-
-            assert_zero(ret, "lc:%d ZBarcode_Encode ret %d != 0\n", lc, ret);
-
-            assert_equal(symbol->rows, 3, "rows %d != 3", symbol->rows);
-
-            ret = testUtilDAFTConvert(symbol, actual_daft, sizeof(actual_daft));
-            assert_nonzero(ret, "lc:%d testUtilDAFTConvert == 0", lc);
-            assert_zero(strcmp(actual_daft, expected_daft), "lc:%d\n  actual %s\nexpected %s\n", lc, actual_daft, expected_daft);
-        } else {
-            assert_nonzero(ret, "lc:%d ZBarcode_Encode ret %d == 0\n", lc, ret);
-        }
-
-        ZBarcode_Delete(symbol);
+    if (test_performance) {
+        printf("test_csv perf iterations: %d\n", perf_iterations);
     }
 
-    fclose(fd);
+    assert_nonzero(testUtilDataPath(csvfile, sizeof(csvfile),
+        "/backend/tests/data/imail/usps/", "uspsIMbEncoderTestCases.csv"), "testUtilDataPath == 0\n");
 
+	for (j = 0; j < perf_iterations; j++) {
+		fd = fopen(csvfile, "r");
+		assert_nonnull(fd, "fopen(%s) == NULL", csvfile);
+
+		while (fgets(buffer, sizeof(buffer), fd) != NULL) {
+			const char *b;
+			struct zint_symbol *symbol;
+
+			lc++;
+
+            if (testContinue(p_ctx, lc - 1)) continue;
+
+			#ifdef TEST_IMAIL_CSV_MAX
+			if (lc > TEST_IMAIL_CSV_MAX && p_ctx->index == -1) {
+				break;
+			}
+			#endif
+
+			id[0] = tracking_code[0] = routing_code[0] = expected_daft[0] = return_code[0] = '\0';
+
+			b = testUtilReadCSVField(buffer, id, sizeof(id));
+			assert_nonnull(b, "lc:%d id b == NULL", lc);
+			assert_equal(*b, ',', "lc:%d id *b %c != ','", lc, *b);
+
+			b = testUtilReadCSVField(++b, tracking_code, sizeof(tracking_code));
+			assert_nonnull(b, "lc:%d tracking_code b == NULL", lc);
+			assert_equal(*b, ',', "lc:%d tracking_code *b %c != ','", lc, *b);
+
+			b = testUtilReadCSVField(++b, routing_code, sizeof(routing_code));
+			assert_nonnull(b, "lc:%d routing_code b == NULL", lc);
+			assert_equal(*b, ',', "lc:%d routing_code *b %c != ','", lc, *b);
+
+			b = testUtilReadCSVField(++b, expected_daft, sizeof(expected_daft));
+			assert_nonnull(b, "lc:%d expected_daft b == NULL", lc);
+			assert_equal(*b, ',', "lc:%d expected_daft *b %c != ','", lc, *b);
+
+			b = testUtilReadCSVField(++b, return_code, sizeof(return_code));
+			assert_nonnull(b, "lc:%d return_code b == NULL", lc);
+			assert_equal(*b, ',', "lc:%d return_code *b %c != ','", lc, *b);
+
+			strcpy(data, tracking_code);
+			strcat(data, "-");
+			strcat(data, routing_code);
+
+			assert_nonzero((int) strlen(data), "lc:%d strlen(data) == 0", lc);
+
+			symbol = ZBarcode_Create();
+			assert_nonnull(symbol, "Symbol not created\n");
+
+			symbol->symbology = BARCODE_USPS_IMAIL;
+			symbol->debug |= debug;
+
+			if (test_performance) {
+				start = clock();
+			}
+			ret = ZBarcode_Encode(symbol, (unsigned char *) data, (int) strlen(data));
+			if (test_performance) {
+				total += clock() - start;
+			}
+
+			if (strcmp(return_code, "00") == 0) {
+
+				assert_zero(ret, "lc:%d ZBarcode_Encode ret %d != 0\n", lc, ret);
+
+				assert_equal(symbol->rows, 3, "rows %d != 3", symbol->rows);
+
+				ret = testUtilDAFTConvert(symbol, actual_daft, sizeof(actual_daft));
+				assert_nonzero(ret, "lc:%d testUtilDAFTConvert == 0", lc);
+				assert_zero(strcmp(actual_daft, expected_daft), "lc:%d\n  actual %s\nexpected %s\n", lc, actual_daft, expected_daft);
+			} else {
+				assert_nonzero(ret, "lc:%d ZBarcode_Encode ret %d == 0\n", lc, ret);
+			}
+
+			ZBarcode_Delete(symbol);
+		}
+
+		assert_zero(fclose(fd), "fclose != 0\n");
+	}
+
+	if (test_performance) {
+        printf("test_csv perf total: %8gms\n", TEST_PERF_TIME(total));
+	}
     testFinish();
 }
 
-static void test_hrt(int index, int debug) {
+static void test_hrt(const testCtx *const p_ctx) {
+    int debug = p_ctx->debug;
 
-    testStart("");
-
-    int ret;
     struct item {
-        unsigned char *data;
-        unsigned char *expected;
+        char *data;
+        char *expected;
     };
-    // s/\/\*[ 0-9]*\*\//\=printf("\/*%3d*\/", line(".") - line("'<"))
+    /* s/\/\*[ 0-9]*\*\//\=printf("\/\*%3d*\/", line(".") - line("'<")): */
     struct item data[] = {
-        /*  0*/ { "53379777234994544928-51135759461", "" }, // None
+        /*  0*/ { "53379777234994544928-51135759461", "" }, /* None */
     };
     int data_size = ARRAY_SIZE(data);
+    int i, length, ret;
+    struct zint_symbol *symbol;
 
-    char *text;
+    testStart("test_hrt");
 
-    for (int i = 0; i < data_size; i++) {
+    for (i = 0; i < data_size; i++) {
 
-        if (index != -1 && i != index) continue;
+        if (testContinue(p_ctx, i)) continue;
 
-        struct zint_symbol *symbol = ZBarcode_Create();
+        symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
-        int length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
+        length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
 
-        ret = ZBarcode_Encode(symbol, data[i].data, length);
+        ret = ZBarcode_Encode(symbol, (unsigned char *) data[i].data, length);
         assert_zero(ret, "i:%d ZBarcode_Encode ret %d != 0 %s\n", i, ret, symbol->errtxt);
 
-        assert_zero(strcmp(symbol->text, data[i].expected), "i:%d strcmp(%s, %s) != 0\n", i, symbol->text, data[i].expected);
+        assert_zero(strcmp((char *) symbol->text, data[i].expected), "i:%d strcmp(%s, %s) != 0\n", i, symbol->text, data[i].expected);
 
         ZBarcode_Delete(symbol);
     }
@@ -161,50 +199,68 @@ static void test_hrt(int index, int debug) {
     testFinish();
 }
 
-static void test_input(int index, int debug) {
+static void test_input(const testCtx *const p_ctx) {
+    int debug = p_ctx->debug;
 
-    testStart("");
-
-    int ret;
     struct item {
-        unsigned char *data;
+        char *data;
         int ret;
         int expected_rows;
         int expected_width;
     };
-    // s/\/\*[ 0-9]*\*\//\=printf("\/*%3d*\/", line(".") - line("'<"))
+    /* s/\/\*[ 0-9]*\*\//\=printf("\/\*%3d*\/", line(".") - line("'<")): */
     struct item data[] = {
         /*  0*/ { "53379777234994544928-51135759461", 0, 3, 129 },
         /*  1*/ { "123456789012345678901234567890123", ZINT_ERROR_TOO_LONG, -1, -1 },
         /*  2*/ { "A", ZINT_ERROR_INVALID_DATA, -1, -1 },
-        /*  3*/ { "12345678901234567890", 0, 3, 129 }, // Tracker only, no ZIP
-        /*  4*/ { "15345678901234567890", ZINT_ERROR_INVALID_DATA, -1, -1 }, // Tracker 2nd char > 4
-        /*  5*/ { "1234567890123456789", ZINT_ERROR_INVALID_DATA, -1, -1 }, // Tracker 20 chars
-        /*  6*/ { "12345678901234567890-1234", ZINT_ERROR_INVALID_DATA, -1, -1 }, // ZIP wrong len
+        /*  3*/ { "12345678901234567890", 0, 3, 129 }, /* Tracker only, no ZIP */
+        /*  4*/ { "15345678901234567890", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* Tracker 2nd char > 4 */
+        /*  5*/ { "1234567890123456789", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* Tracker 20 chars */
+        /*  6*/ { "12345678901234567890-1234", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* ZIP wrong len */
         /*  7*/ { "12345678901234567890-12345", 0, 3, 129 },
-        /*  8*/ { "12345678901234567890-123456", ZINT_ERROR_INVALID_DATA, -1, -1 }, // ZIP wrong len
-        /*  9*/ { "12345678901234567890-12345678", ZINT_ERROR_INVALID_DATA, -1, -1 }, // ZIP wrong len
+        /*  8*/ { "12345678901234567890-123456", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* ZIP wrong len */
+        /*  9*/ { "12345678901234567890-12345678", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* ZIP wrong len */
         /* 10*/ { "12345678901234567890-123456789", 0, 3, 129 },
-        /* 11*/ { "12345678901234567890-1234567890", ZINT_ERROR_INVALID_DATA, -1, -1 }, // ZIP wrong len
+        /* 11*/ { "12345678901234567890-1234567890", ZINT_ERROR_INVALID_DATA, -1, -1 }, /* ZIP wrong len */
         /* 12*/ { "12345678901234567890-12345678901", 0, 3, 129 },
     };
     int data_size = ARRAY_SIZE(data);
+    int i, length, ret;
+    struct zint_symbol *symbol;
 
-    for (int i = 0; i < data_size; i++) {
+    char cmp_buf[8192];
+    char cmp_msg[1024];
 
-        if (index != -1 && i != index) continue;
+    int do_bwipp = (debug & ZINT_DEBUG_TEST_BWIPP) && testUtilHaveGhostscript(); /* Only do BWIPP test if asked, too slow otherwise */
 
-        struct zint_symbol *symbol = ZBarcode_Create();
+    testStart("test_input");
+
+    for (i = 0; i < data_size; i++) {
+
+        if (testContinue(p_ctx, i)) continue;
+
+        symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
-        int length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
+        length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
 
-        ret = ZBarcode_Encode(symbol, data[i].data, length);
+        ret = ZBarcode_Encode(symbol, (unsigned char *) data[i].data, length);
         assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
 
-        if (ret < 5) {
+        if (ret < ZINT_ERROR) {
             assert_equal(symbol->rows, data[i].expected_rows, "i:%d symbol->rows %d != %d\n", i, symbol->rows, data[i].expected_rows);
             assert_equal(symbol->width, data[i].expected_width, "i:%d symbol->width %d != %d\n", i, symbol->width, data[i].expected_width);
+
+            if (do_bwipp && testUtilCanBwipp(i, symbol, -1, -1, -1, debug)) {
+                char modules_dump[4096];
+                assert_notequal(testUtilModulesDump(symbol, modules_dump, sizeof(modules_dump)), -1, "i:%d testUtilModulesDump == -1\n", i);
+                ret = testUtilBwipp(i, symbol, -1, -1, -1, data[i].data, length, NULL, cmp_buf, sizeof(cmp_buf), NULL);
+                assert_zero(ret, "i:%d %s testUtilBwipp ret %d != 0\n", i, testUtilBarcodeName(symbol->symbology), ret);
+
+                ret = testUtilBwippCmp(symbol, cmp_msg, cmp_buf, modules_dump);
+                assert_zero(ret, "i:%d %s testUtilBwippCmp %d != 0 %s\n  actual: %s\nexpected: %s\n",
+                               i, testUtilBarcodeName(symbol->symbology), ret, cmp_msg, cmp_buf, modules_dump);
+            }
         }
 
         ZBarcode_Delete(symbol);
@@ -213,13 +269,11 @@ static void test_input(int index, int debug) {
     testFinish();
 }
 
-static void test_encode(int index, int generate, int debug) {
+static void test_encode(const testCtx *const p_ctx) {
+    int debug = p_ctx->debug;
 
-    testStart("");
-
-    int ret;
     struct item {
-        unsigned char *data;
+        char *data;
         int ret;
 
         int expected_rows;
@@ -235,36 +289,52 @@ static void test_encode(int index, int generate, int debug) {
                 },
     };
     int data_size = ARRAY_SIZE(data);
+    int i, length, ret;
+    struct zint_symbol *symbol;
 
     char escaped[1024];
+    char bwipp_buf[8192];
+    char bwipp_msg[1024];
 
-    for (int i = 0; i < data_size; i++) {
+    int do_bwipp = (debug & ZINT_DEBUG_TEST_BWIPP) && testUtilHaveGhostscript(); /* Only do BWIPP test if asked, too slow otherwise */
 
-        if (index != -1 && i != index) continue;
+    testStart("test_encode");
 
-        struct zint_symbol *symbol = ZBarcode_Create();
+    for (i = 0; i < data_size; i++) {
+
+        if (testContinue(p_ctx, i)) continue;
+
+        symbol = ZBarcode_Create();
         assert_nonnull(symbol, "Symbol not created\n");
 
-        int length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
+        length = testUtilSetSymbol(symbol, BARCODE_USPS_IMAIL, -1 /*input_mode*/, -1 /*eci*/, -1 /*option_1*/, -1, -1, -1 /*output_options*/, data[i].data, -1, debug);
 
-        ret = ZBarcode_Encode(symbol, data[i].data, length);
+        ret = ZBarcode_Encode(symbol, (unsigned char *) data[i].data, length);
         assert_equal(ret, data[i].ret, "i:%d ZBarcode_Encode ret %d != %d (%s)\n", i, ret, data[i].ret, symbol->errtxt);
 
-        if (generate) {
+        if (p_ctx->generate) {
             printf("        /*%3d*/ { \"%s\", %s, %d, %d, \"%s\",\n",
                     i, testUtilEscape(data[i].data, length, escaped, sizeof(escaped)),
                     testUtilErrorName(data[i].ret), symbol->rows, symbol->width, data[i].comment);
-            testUtilModulesDump(symbol, "                    ", "\n");
+            testUtilModulesPrint(symbol, "                    ", "\n");
             printf("                },\n");
         } else {
-            if (ret < 5) {
+            if (ret < ZINT_ERROR) {
+                int width, row;
+
                 assert_equal(symbol->rows, data[i].expected_rows, "i:%d symbol->rows %d != %d (%s)\n", i, symbol->rows, data[i].expected_rows, data[i].data);
                 assert_equal(symbol->width, data[i].expected_width, "i:%d symbol->width %d != %d (%s)\n", i, symbol->width, data[i].expected_width, data[i].data);
 
-                if (ret == 0) {
-                    int width, row;
-                    ret = testUtilModulesCmp(symbol, data[i].expected, &width, &row);
-                    assert_zero(ret, "i:%d testUtilModulesCmp ret %d != 0 width %d row %d (%s)\n", i, ret, width, row, data[i].data);
+                ret = testUtilModulesCmp(symbol, data[i].expected, &width, &row);
+                assert_zero(ret, "i:%d testUtilModulesCmp ret %d != 0 width %d row %d (%s)\n", i, ret, width, row, data[i].data);
+
+                if (do_bwipp && testUtilCanBwipp(i, symbol, -1, -1, -1, debug)) {
+                    ret = testUtilBwipp(i, symbol, -1, -1, -1, data[i].data, length, NULL, bwipp_buf, sizeof(bwipp_buf), NULL);
+                    assert_zero(ret, "i:%d %s testUtilBwipp ret %d != 0\n", i, testUtilBarcodeName(symbol->symbology), ret);
+
+                    ret = testUtilBwippCmp(symbol, bwipp_msg, bwipp_buf, data[i].expected);
+                    assert_zero(ret, "i:%d %s testUtilBwippCmp %d != 0 %s\n  actual: %s\nexpected: %s\n",
+                                   i, testUtilBarcodeName(symbol->symbology), ret, bwipp_msg, bwipp_buf, data[i].expected);
                 }
             }
         }
@@ -277,11 +347,11 @@ static void test_encode(int index, int generate, int debug) {
 
 int main(int argc, char *argv[]) {
 
-    testFunction funcs[] = { /* name, func, has_index, has_generate, has_debug */
-        { "test_csv", test_csv, 1, 0, 1 },
-        { "test_hrt", test_hrt, 1, 0, 1 },
-        { "test_input", test_input, 1, 0, 1 },
-        { "test_encode", test_encode, 1, 1, 1 },
+    testFunction funcs[] = { /* name, func */
+        { "test_csv", test_csv },
+        { "test_hrt", test_hrt },
+        { "test_input", test_input },
+        { "test_encode", test_encode },
     };
 
     testRun(argc, argv, funcs, ARRAY_SIZE(funcs));
@@ -290,3 +360,5 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+
+/* vim: set ts=4 sw=4 et : */

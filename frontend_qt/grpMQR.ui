@@ -24,7 +24,10 @@
      <item row="0" column="0" >
       <widget class="QLabel" name="lavelMQRSize" >
        <property name="text" >
-        <string>Size:</string>
+        <string>Si&amp;ze:</string>
+       </property>
+       <property name="toolTip">
+        <string>Set size (version) of symbol</string>
        </property>
        <property name="buddy">
         <cstring>cmbMQRSize</cstring>
@@ -33,6 +36,9 @@
      </item>
      <item row="0" column="1" >
       <widget class="QComboBox" name="cmbMQRSize" >
+       <property name="toolTip">
+        <string>Set size (version) of symbol</string>
+       </property>
        <item>
         <property name="text">
          <string>Automatic</string>
@@ -63,7 +69,11 @@
      <item row="1" column="0" >
       <widget class="QLabel" name="labelMQRECC" >
        <property name="text" >
-        <string>Error Correction:</string>
+        <string>E&amp;rror Correction:</string>
+       </property>
+       <property name="toolTip">
+        <string>Set percentage of capacity to use for
+error correction codewords</string>
        </property>
        <property name="buddy">
         <cstring>cmbMQRECC</cstring>
@@ -72,6 +82,10 @@
      </item>
      <item row="1" column="1" >
       <widget class="QComboBox" name="cmbMQRECC" >
+       <property name="toolTip">
+        <string>Set percentage of capacity to use for
+error correction codewords</string>
+       </property>
        <item>
         <property name="text">
          <string>Automatic</string>
@@ -94,7 +108,66 @@
        </item>
       </widget>
      </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="labelMQRMask">
+       <property name="text">
+        <string>&amp;Mask:</string>
+       </property>
+       <property name="toolTip">
+        <string>Manually specify which mask to use</string>
+       </property>
+       <property name="buddy">
+        <cstring>cmbMQRMask</cstring>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QComboBox" name="cmbMQRMask">
+       <property name="toolTip">
+        <string>Manually specify which mask to use</string>
+       </property>
+       <item>
+        <property name="text">
+         <string>Automatic</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>0</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>1</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>2</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>3</string>
+        </property>
+       </item>
+      </widget>
+     </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="chkMQRFullMultibyte">
+     <property name="text">
+      <string>&amp;Full Multibyte</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+     <property name="toolTip">
+      <string>Use Kanji multibyte encoding for binary
+and Latin data</string>
+     </property>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer" >

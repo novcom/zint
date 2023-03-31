@@ -57,7 +57,7 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\..\zlib\;..\..\lpng\;..\..\lpng\build;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.9.0";BUILD_ZINT_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.12.0.9";BUILD_ZINT_DLL;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <ExceptionHandling />
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -67,7 +67,6 @@
       <PrecompiledHeader />
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <CompileAs>CompileAsCpp</CompileAs>
       <DisableSpecificWarnings>4018;4244;4305;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <ResourceCompile>
@@ -92,7 +91,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <AdditionalIncludeDirectories>..\..\zlib\;..\..\lpng\;..\..\lpng\build;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.9.0";BUILD_ZINT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;ZINT_VERSION="2.12.0.9";BUILD_ZINT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -101,7 +100,6 @@
       <PrecompiledHeader />
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat />
-      <CompileAs>CompileAsCpp</CompileAs>
       <DisableSpecificWarnings>4018;4244;4305;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <ResourceCompile>
@@ -126,6 +124,7 @@
     <ClCompile Include="..\backend\2of5.c" />
     <ClCompile Include="..\backend\auspost.c" />
     <ClCompile Include="..\backend\aztec.c" />
+    <ClCompile Include="..\backend\bc412.c" />
     <ClCompile Include="..\backend\bmp.c" />
     <ClCompile Include="..\backend\codablock.c" />
     <ClCompile Include="..\backend\code.c" />
@@ -140,8 +139,6 @@
     <ClCompile Include="..\backend\dotcode.c" />
     <ClCompile Include="..\backend\eci.c" />
     <ClCompile Include="..\backend\emf.c" />
-    <ClCompile Include="..\backend\gb18030.c" />
-    <ClCompile Include="..\backend\gb2312.c" />
     <ClCompile Include="..\backend\general_field.c" />
     <ClCompile Include="..\backend\gif.c" />
     <ClCompile Include="..\backend\gridmtx.c" />
@@ -164,7 +161,6 @@
     <ClCompile Include="..\backend\raster.c" />
     <ClCompile Include="..\backend\reedsol.c" />
     <ClCompile Include="..\backend\rss.c" />
-    <ClCompile Include="..\backend\sjis.c" />
     <ClCompile Include="..\backend\svg.c" />
     <ClCompile Include="..\backend\telepen.c" />
     <ClCompile Include="..\backend\tif.c" />
@@ -174,6 +170,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\backend\aztec.h" />
+    <ClInclude Include="..\backend\big5.h" />
     <ClInclude Include="..\backend\bmp.h" />
     <ClInclude Include="..\backend\channel_precalcs.h" />
     <ClInclude Include="..\backend\code1.h" />
@@ -181,32 +178,40 @@
     <ClInclude Include="..\backend\code49.h" />
     <ClInclude Include="..\backend\common.h" />
     <ClInclude Include="..\backend\composite.h" />
-    <ClInclude Include="..\backend\dm200.h" />
     <ClInclude Include="..\backend\dmatrix.h" />
+    <ClInclude Include="..\backend\dmatrix_trace.h" />
     <ClInclude Include="..\backend\eci.h" />
+    <ClInclude Include="..\backend\eci_sb.h" />
     <ClInclude Include="..\backend\emf.h" />
     <ClInclude Include="..\backend\font.h" />
     <ClInclude Include="..\backend\gb18030.h" />
     <ClInclude Include="..\backend\gb2312.h" />
+    <ClInclude Include="..\backend\gbk.h" />
     <ClInclude Include="..\backend\general_field.h" />
     <ClInclude Include="..\backend\gridmtx.h" />
     <ClInclude Include="..\backend\gs1.h" />
+    <ClInclude Include="..\backend\gs1_lint.h" />
     <ClInclude Include="..\backend\hanxin.h" />
+    <ClInclude Include="..\backend\iso3166.h" />
+    <ClInclude Include="..\backend\iso4217.h" />
+    <ClInclude Include="..\backend\ksx1001.h" />
     <ClInclude Include="..\backend\large.h" />
     <ClInclude Include="..\backend\maxicode.h" />
-    <ClInclude Include="..\backend\maxipng.h" />
-    <ClInclude Include="..\backend\ms_stdint.h" />
     <ClInclude Include="..\backend\output.h" />
     <ClInclude Include="..\backend\pcx.h" />
     <ClInclude Include="..\backend\pdf417.h" />
+    <ClInclude Include="..\backend\pdf417_tabs.h" />
+    <ClInclude Include="..\backend\pdf417_trace.h" />
     <ClInclude Include="..\backend\qr.h" />
     <ClInclude Include="..\backend\reedsol.h" />
-    <ClInclude Include="..\backend\resource.h" />
+    <ClInclude Include="..\backend\reedsol_logs.h" />
     <ClInclude Include="..\backend\rss.h" />
     <ClInclude Include="..\backend\sjis.h" />
-    <ClInclude Include="..\backend\stdint_msvc.h" />
     <ClInclude Include="..\backend\tif.h" />
+    <ClInclude Include="..\backend\tif_lzw.h" />
+    <ClInclude Include="..\backend\zfiletypes.h" />
     <ClInclude Include="..\backend\zint.h" />
+    <ClInclude Include="..\backend\zintconfig.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\backend\libzint.rc" />

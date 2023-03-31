@@ -1,0 +1,28 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+   "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="168" height="142" version="1.1"
+   xmlns="http://www.w3.org/2000/svg">
+   <desc>Zint Generated Symbol
+   </desc>
+
+   <g id="barcode" fill="#000000">
+      <rect x="0" y="0" width="168" height="142" fill="#FFFFFF" />
+      <rect x="0.00" y="0.00" width="4.80" height="96.00" />
+      <rect x="9.60" y="0.00" width="4.80" height="96.00" />
+      <rect x="19.20" y="0.00" width="4.80" height="96.00" />
+      <rect x="28.80" y="0.00" width="4.80" height="96.00" />
+      <rect x="38.40" y="0.00" width="4.80" height="96.00" />
+      <rect x="57.60" y="0.00" width="4.80" height="96.00" />
+      <rect x="76.80" y="0.00" width="4.80" height="96.00" />
+      <rect x="91.20" y="0.00" width="4.80" height="96.00" />
+      <rect x="105.60" y="0.00" width="19.20" height="96.00" />
+      <rect x="129.60" y="0.00" width="9.60" height="96.00" />
+      <rect x="144.00" y="0.00" width="4.80" height="96.00" />
+      <rect x="153.60" y="0.00" width="14.40" height="96.00" />
+      <text x="84.00" y="129.60" text-anchor="middle"
+         font-family="Helvetica, sans-serif" font-size="33.6" >
+         453678
+      </text>
+   </g>
+</svg>
